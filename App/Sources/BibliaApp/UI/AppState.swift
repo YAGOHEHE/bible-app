@@ -27,6 +27,13 @@ final class AppState {
     var chapterCounts = [Int](repeating: 0, count: 66)
     var highlightedVerse: Int?
     var toast: String?
+    // Vista paralela (S03) y gestor de versiones (S04)
+    var parallelOn = false
+    var parallelLayout: ParallelLayout = .columns
+    var versionSet = VersionSet(order: [], enabled: [])
+    var parallelColumns: [Translation] = []
+    var parallelRows: [ParallelRow] = []
+    var showVersions = false
 
     var bible: BibleDatabase?
     @ObservationIgnored var user: UserStore?
@@ -96,6 +103,9 @@ final class AppState {
         book = resume?.book ?? 43
         chapter = min(max(1, resume?.chapter ?? 1), max(1, chapterCounts[book - 1]))
         anchorVerse = resume?.verse ?? 1
+        parallelOn = defaults.bool(forKey: "par.on")
+        parallelLayout = ParallelLayout(rawValue: defaults.string(forKey: "par.layout") ?? "") ?? .columns
+        versionSet = VersionSet.load(from: defaults, installed: translations.map(\.id), primary: translationId)
         try loadBookNames()
         load = .ready
         reloadChapter(scrollTo: anchorVerse)
@@ -121,6 +131,7 @@ final class AppState {
             let ref = translationId == "KJV" ? nil :
                 try repo.maxVerse(translationId: "KJV", book: book, chapter: chapter)
             items = ChapterBuilder.build(verses: vs, headings: hs, referenceMax: ref)
+            try loadParallel(repo)
         } catch {
             load = .failed("\(error)")
             return
@@ -128,11 +139,78 @@ final class AppState {
         selectedVerses = []
         lastClickedVerse = nil
         let target = verse ?? 1
-        anchorVerse = items.first(where: { $0.endNumber >= target })?.number ?? items.first?.number ?? 1
+        if parallelOn {
+            anchorVerse = parallelRows.first(where: { $0.number >= target })?.number ?? parallelRows.first?.number ?? 1
+        } else {
+            anchorVerse = items.first(where: { $0.endNumber >= target })?.number ?? items.first?.number ?? 1
+        }
         tokenCounter += 1
         scrollRequest = ScrollRequest(token: tokenCounter, verse: anchorVerse)
         persist()
     }
+
+    private func loadParallel(_ repo: VerseRepository) throws {
+        guard parallelOn else { parallelColumns = []; parallelRows = []; return }
+        let cols = versionSet.columns(primary: translationId).compactMap { id in translations.first { $0.id == id } }
+        parallelColumns = cols
+        guard cols.count >= 2 else { parallelRows = []; return }
+        let refMax = try repo.maxVerse(translationId: "KJV", book: book, chapter: chapter)
+        let data: [ParallelColumnData] = try cols.map { t in
+            let vs = try repo.chapter(translationId: t.id, book: book, chapter: chapter)
+            let hs = try repo.headings(translationId: t.id, book: book, chapter: chapter)
+            return ParallelColumnData(translationId: t.id, language: t.language,
+                                      items: ChapterBuilder.build(verses: vs, headings: hs,
+                                                                  referenceMax: t.id == "KJV" ? nil : refMax))
+        }
+        parallelRows = ParallelBuilder.build(book: book, chapter: chapter, columns: data)
+    }
+
+    // MARK: parallel / version manager (S03, S04, F03, F08)
+
+    func setParallel(_ on: Bool) {
+        guard on != parallelOn else { return }
+        parallelOn = on
+        defaults.set(on, forKey: "par.on")
+        reloadChapter(scrollTo: anchorVerse)
+    }
+    func toggleParallel() { setParallel(!parallelOn) }
+
+    func setParallelLayout(_ l: ParallelLayout) {
+        parallelLayout = l
+        defaults.set(l.rawValue, forKey: "par.layout")
+    }
+
+    private func versionsChanged() {
+        versionSet.save(to: defaults)
+        if parallelOn { reloadChapter(scrollTo: anchorVerse) } else { parallelColumns = [] }
+    }
+
+    func setVersionEnabled(_ id: String, _ on: Bool) {
+        guard id != translationId else { return }   // la principal siempre está activa
+        if on { versionSet.enabled.insert(id) } else { versionSet.enabled.remove(id) }
+        versionsChanged()
+    }
+
+    func moveVersions(from: IndexSet, to: Int) {
+        versionSet.order.move(fromOffsets: from, toOffset: to)
+        versionsChanged()
+    }
+
+    func moveVersion(_ id: String, by delta: Int) {
+        guard let i = versionSet.order.firstIndex(of: id), versionSet.order.indices.contains(i + delta) else { return }
+        versionSet.order.swapAt(i, i + delta)
+        versionsChanged()
+    }
+
+    func setPrimary(_ id: String) {
+        guard translations.contains(where: { $0.id == id }) else { return }
+        versionSet.enabled.insert(id)
+        versionSet.save(to: defaults)
+        if id == translationId { versionsChanged() } else { setTranslation(id) }
+    }
+
+    var activeVersionCount: Int { versionSet.enabledCount(primary: translationId) }
+    var parallelNumbers: [Int] { parallelRows.map(\.number) }
 
     private func touchRecent() {
         recentBooks = ResumeState.pushRecent(book, into: recentBooks)
@@ -166,6 +244,8 @@ final class AppState {
 
     func setTranslation(_ id: String) {
         guard id != translationId, translations.contains(where: { $0.id == id }) else { return }
+        versionSet.enabled.insert(id)
+        versionSet.save(to: defaults)
         let keep = anchorVerse
         translationId = id
         try? loadBookNames()
@@ -187,9 +267,10 @@ final class AppState {
     // MARK: selection & copy (F10)
 
     func clickVerse(_ n: Int, shift: Bool, command: Bool) {
+        let nums = parallelOn ? parallelNumbers : items.map(\.number)
         if shift, let last = lastClickedVerse,
-           let a = items.firstIndex(where: { $0.number == last }), let b = items.firstIndex(where: { $0.number == n }) {
-            for i in min(a, b)...max(a, b) { selectedVerses.insert(items[i].number) }
+           let a = nums.firstIndex(of: last), let b = nums.firstIndex(of: n) {
+            for i in min(a, b)...max(a, b) { selectedVerses.insert(nums[i]) }
         } else if command {
             if selectedVerses.contains(n) { selectedVerses.remove(n) } else { selectedVerses.insert(n) }
         } else if selectedVerses == [n] {
@@ -205,6 +286,11 @@ final class AppState {
     var canCopyReference: Bool { !selectedVerses.isEmpty }
 
     func referenceText() -> String? {
+        if parallelOn {
+            return ParallelCopy.format(rows: parallelRows, selected: selectedVerses, book: book, chapter: chapter,
+                                       columns: parallelColumns.map { ($0.id, $0.language) },
+                                       bookName: { self.bookName($0, language: $1) })
+        }
         let vs = items.filter { selectedVerses.contains($0.number) }
         guard !vs.isEmpty else { return nil }
         return CopyFormatter.format(verses: vs, bookName: bookName(book, language: language), chapter: chapter,

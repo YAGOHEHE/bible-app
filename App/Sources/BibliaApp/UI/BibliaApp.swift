@@ -19,6 +19,7 @@ struct BibliaApp: App {
                 .themedRoot(settings)
                 .task { state.bootstrap() }
         }
+        .defaultSize(width: 1280, height: 820)
         .commands { ReaderCommands(state: state, settings: settings) }
 
         Settings {
@@ -49,6 +50,11 @@ struct ReaderCommands: Commands {
                 .keyboardShortcut("-", modifiers: .command).disabled(settings.fontScale <= FontScale.min + 0.001)
             Button("Tamaño real") { settings.resetFont() }
                 .keyboardShortcut("0", modifiers: .command)
+            Divider()
+            Button(state.parallelOn ? "Desactivar vista paralela" : "Vista paralela") { state.toggleParallel() }
+                .keyboardShortcut("\\", modifiers: .command)
+            Button("Versiones…") { state.showVersions = true }
+                .keyboardShortcut("v", modifiers: [.command, .option])
             Divider()
             Button("Copiar con referencia") { state.copyWithReference() }
                 .keyboardShortcut("c", modifiers: [.command, .option]).disabled(!state.canCopyReference)

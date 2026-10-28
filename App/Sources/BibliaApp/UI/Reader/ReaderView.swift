@@ -25,7 +25,7 @@ struct ReaderView: View {
     }
 }
 
-private struct ToastView: View {
+struct ToastView: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
 
@@ -176,7 +176,8 @@ private struct BlockView: View {
 
 enum VerseText {
     /// Número en superíndice (enlace verse://N para seleccionar) + texto, con selección resaltada.
-    static func attributed(verses: [DisplayVerse], theme: Theme, latin: Bool, selected: Set<Int>) -> AttributedString {
+    static func attributed(verses: [DisplayVerse], theme: Theme, latin: Bool, selected: Set<Int>,
+                           links: Bool = true) -> AttributedString {
         var out = AttributedString()
         for (i, v) in verses.enumerated() {
             let isSel = selected.contains(v.number)
@@ -184,7 +185,7 @@ enum VerseText {
             num.font = theme.verseNumberFont
             num.baselineOffset = theme.verseNumberBaseline
             num.foregroundColor = theme.palette.verseNumber
-            num.link = URL(string: "verse://\(v.number)")
+            if links { num.link = URL(string: "verse://\(v.number)") }
             var body = AttributedString(v.text)
             body.font = theme.readingFont(latin: latin)
             body.foregroundColor = theme.palette.textPrimary

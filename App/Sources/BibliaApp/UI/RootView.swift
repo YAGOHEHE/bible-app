@@ -19,12 +19,17 @@ struct RootView: View {
                 BookSidebar()
                     .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
             } detail: {
-                ReaderView()
+                if state.parallelOn { ParallelView() } else { ReaderView() }
             }
             .navigationTitle("\(state.bookName(state.book)) \(state.chapter)")
-            .navigationSubtitle(state.currentTranslation?.name ?? state.translationId)
+            .navigationSubtitle(state.parallelOn && state.parallelColumns.count > 1
+                                ? state.parallelColumns.map(\.id).joined(separator: " · ")
+                                : (state.currentTranslation?.name ?? state.translationId))
             .frame(minWidth: 800, minHeight: 500)
             .toolbar { ReaderToolbar() }
+            .sheet(isPresented: Binding(get: { state.showVersions }, set: { state.showVersions = $0 })) {
+                VersionManagerView()
+            }
         }
     }
 }
@@ -32,6 +37,7 @@ struct RootView: View {
 struct ReaderToolbar: ToolbarContent {
     @Environment(AppState.self) private var state
     @Environment(AppSettings.self) private var settings
+    @Environment(\.theme) private var theme
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
@@ -50,6 +56,20 @@ struct ReaderToolbar: ToolbarContent {
             }
             .pickerStyle(.menu)
             .help("Versión de la Biblia")
+            Button { state.toggleParallel() } label: {
+                Image(systemName: "rectangle.split.2x1")
+                    .foregroundStyle(state.parallelOn ? theme.palette.accent : theme.palette.textSecondary)
+            }
+            .help("Vista paralela (⌘\\)")
+            .accessibilityLabel("Vista paralela, \(state.parallelOn ? "activada" : "desactivada")")
+            if state.parallelOn {
+                Picker("Disposición", selection: Binding(get: { state.parallelLayout }, set: { state.setParallelLayout($0) })) {
+                    ForEach(ParallelLayout.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.menu).help("Columnas o intercalado")
+            }
+            Button { state.showVersions = true } label: { Image(systemName: "books.vertical") }
+                .help("Gestor de versiones (⌥⌘V)")
             Button { settings.stepFont(-1) } label: { Image(systemName: "textformat.size.smaller") }
                 .help("Reducir tamaño (⌘−)").disabled(settings.fontScale <= FontScale.min + 0.001)
             Button { settings.stepFont(1) } label: { Image(systemName: "textformat.size.larger") }
@@ -59,7 +79,6 @@ struct ReaderToolbar: ToolbarContent {
 }
 
 // Stubs de siguientes cortes.
-struct ParallelView: View { var body: some View { Text("Paralelo (S03)") } }
 struct SearchResultsView: View { var body: some View { Text("Búsqueda (S05)") } }
 struct StrongPanel: View { var body: some View { Text("Strong (S06)") } }
 struct HistoryView: View { var body: some View { Text("Historial (S07)") } }

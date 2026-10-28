@@ -11,12 +11,12 @@ Enlaces de referencia dentro de los títulos de sección (popover con el pasaje)
 "Modo ""cada versículo en su línea"" (每节另起一行)",lectura,should,yes,yes,alterna párrafo corrido / lista
 Seleccionar versículo(s) y copiar con formato,lectura,must,yes,yes,
 Formato de copia/compartir personalizable,lectura,could,yes,no,plantilla con {libro} {ref} {texto}
-Vista paralela de versiones (对照模式) en la misma pantalla (S03),versiones,must,yes,no,reseña principal de usuarios
+Vista paralela de versiones (对照模式) en la misma pantalla (S03),versiones,must,yes,yes,reseña principal de usuarios
 Vista dividida con panel lateral (SecondSplit),versiones,should,yes,no,segundo panel conmutable
-Desplazamiento sincronizado entre versiones paralelas,versiones,must,yes,no,parte difícil; ver recon.md
+Desplazamiento sincronizado entre versiones paralelas,versiones,must,yes,yes,parte difícil; ver recon.md
 Color de comparación configurable,ajustes,could,yes,no,
-Selector de versión activa y lista de versiones (S04),versiones,must,yes,no,Translations / CurrentBible
-Gestor de versiones: instalar/quitar módulos incluidos (S04),versiones,should,yes,no,catálogo local; sin descargas remotas en v1
+Selector de versión activa y lista de versiones (S04),versiones,must,yes,yes,Translations / CurrentBible
+Gestor de versiones: instalar/quitar módulos incluidos (S04),versiones,should,yes,partial,catálogo local; sin descargas remotas en v1; activar/ordenar/principal hecho, importar deshabilitado
 Mensaje claro si la versión no está instalada o no tiene el libro,versiones,must,yes,yes,estado de error de S01/S04
 Biblia china 和合本 simplificada (dominio público),contenido,must,yes,no,fuente abierta
 Reina-Valera 1909 (dominio público),contenido,must,yes,no,sustituye a RVR1995
@@ -44,7 +44,7 @@ Tamaño de fuente (porcentaje),ajustes,must,yes,yes,FontSizePercent
 Tema claro/oscuro (sigue al sistema) (S08),ajustes,must,yes,yes,
 Esquemas de color (uno por modo claro/oscuro),ajustes,could,yes,no,
 Tipografía mixta CJK/Latín con fuentes elegibles,ajustes,should,yes,no,
-Ajustes de pantalla S08 (versiones; fuente; tema; formato),ajustes,must,yes,partial,
+Ajustes de pantalla S08 (versiones; fuente; tema; formato),ajustes,must,yes,yes,
 Mostrar/ocultar panel de comentario/original,ajustes,should,yes,no,CommentAndOriginal
 Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,no,adaptación nativa de escritorio
 Varias ventanas / restauración de ventana,plataforma,could,no,no,propio del clon en macOS

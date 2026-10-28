@@ -28,6 +28,13 @@ struct SettingsView: View {
                 }
                 Toggle("Mostrar títulos de sección", isOn: $s.showHeadings)
             }
+            Section("Versiones (vista paralela)") {
+                VersionEmptyNote()
+                ForEach(state.versionSet.order.compactMap { id in state.translations.first { $0.id == id } }) { t in
+                    VersionRow(t: t, showMoveButtons: true)
+                }
+                Button("Importar módulo…") {}.disabled(true).help("Próximamente")
+            }
             Section("Apariencia") {
                 Picker("Tema", selection: $s.themeChoice) {
                     ForEach(ThemeChoice.allCases) { Text($0.label).tag($0) }
