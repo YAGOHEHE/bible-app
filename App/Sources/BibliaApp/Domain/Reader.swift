@@ -7,6 +7,8 @@ struct DisplayVerse: Identifiable, Hashable {
     let endNumber: Int
     let text: String
     var headings: [String]
+    /// Jerarquía de cada título, en paralelo a `headings`: ms | s1 | s2 | d | r.
+    var headingKinds: [String] = []
     var id: Int { number }
     var label: String { endNumber > number ? "\(number)–\(endNumber)" : "\(number)" }
 }
@@ -15,6 +17,7 @@ enum ChapterBuilder {
     /// - Parameter referenceMax: último versículo del capítulo en una versión de referencia (KJV);
     ///   permite etiquetar una fusión al final del capítulo.
     static func build(verses: [Verse], headings: [Heading], referenceMax: Int? = nil) -> [DisplayVerse] {
+        // (ver también `blocks`)
         let vs = verses.sorted { $0.verse < $1.verse }
         var out: [DisplayVerse] = []
         for (i, v) in vs.enumerated() {
@@ -31,6 +34,7 @@ enum ChapterBuilder {
         for h in headings {
             let idx = out.firstIndex { $0.endNumber >= h.verse } ?? out.count - 1
             out[idx].headings.append(h.text)
+            out[idx].headingKinds.append(h.kind ?? "s1")
         }
         return out
     }
@@ -118,39 +122,108 @@ struct ResumeState: Equatable {
     }
 }
 
-/// Unidad de desplazamiento/anclaje del lector. `id` = primer versículo del bloque.
-struct ReaderBlock: Identifiable, Equatable {
-    let id: Int
-    let headings: [String]
-    let verses: [DisplayVerse]
-    /// Continúa el párrafo anterior (sin hueco superior).
-    let continuation: Bool
-    func contains(_ verse: Int) -> Bool { verses.contains { $0.number <= verse && verse <= $0.endNumber } }
+/// Trozo de un versículo dentro de un bloque. `label` solo en la primera aparición del versículo
+/// en el capítulo (el número en superíndice); `end` > `verse` si la versión fusiona versículos.
+struct Piece: Hashable {
+    let verse: Int
+    let end: Int
+    let label: String?
+    let text: String
 }
 
-enum BlockBuilder {
-    static let paragraphChunk = 8
+/// Bloque de maquetación: título, párrafo, línea de poesía, elemento de lista o línea en blanco.
+/// `id` = posición en el capítulo; se usa como ancla de desplazamiento.
+struct BookBlock: Identifiable, Equatable {
+    enum Kind: Equatable { case heading, prose, poetry, list, blank }
+    let id: Int
+    let kind: Kind
+    /// Nivel de sangría (poesía/listas) o, en títulos, irrelevante.
+    let level: Int
+    /// ms | s1 | s2 | d | r (solo títulos)
+    let headingKind: String
+    /// `m`: párrafo sin sangría (continuación tras poesía o cita).
+    let flush: Bool
+    let pieces: [Piece]
+    /// Versículo al que ancla el bloque (en títulos, el que precede).
+    let anchorVerse: Int
 
-    static func build(items: [DisplayVerse], paragraph: Bool, showHeadings: Bool) -> [ReaderBlock] {
-        guard !items.isEmpty else { return [] }
-        if !paragraph {
-            return items.map { ReaderBlock(id: $0.number, headings: showHeadings ? $0.headings : [], verses: [$0], continuation: false) }
+    func contains(_ v: Int) -> Bool { kind != .heading && pieces.contains { $0.verse <= v && v <= $0.end } }
+    var verseNumbers: Set<Int> { Set(pieces.map(\.verse)) }
+}
+
+extension ChapterBuilder {
+    enum Mode { case book, perVerse }
+
+    /// Bloques del capítulo. `.book` usa la tabla `layout`; sin ella (o en `.perVerse`) cada
+    /// versículo es su propio párrafo. Respeta versículos fusionados y títulos de versículos ausentes
+    /// (ya resueltos en `items`).
+    static func blocks(items: [DisplayVerse], layout: [LayoutPiece], mode: Mode, showHeadings: Bool) -> [BookBlock] {
+        var out: [BookBlock] = []
+        func add(_ kind: BookBlock.Kind, level: Int = 1, hk: String = "", flush: Bool = false, pieces: [Piece], anchor: Int) {
+            out.append(BookBlock(id: out.count, kind: kind, level: level, headingKind: hk, flush: flush, pieces: pieces, anchorVerse: anchor))
         }
-        var blocks: [ReaderBlock] = []
-        var cur: [DisplayVerse] = []
-        var curHeads: [String] = []
-        var cont = false
+        func addHeadings(_ v: DisplayVerse) {
+            guard showHeadings else { return }
+            for (i, h) in v.headings.enumerated() {
+                add(.heading, hk: v.headingKinds[safe: i] ?? "s1", pieces: [Piece(verse: v.number, end: v.number, label: nil, text: h)], anchor: v.number)
+            }
+        }
+        let byNumber = Dictionary(uniqueKeysWithValues: items.map { ($0.number, $0) })
+        if mode == .perVerse || layout.isEmpty || items.isEmpty {
+            for v in items {
+                addHeadings(v)
+                add(.prose, flush: true, pieces: [Piece(verse: v.number, end: v.endNumber, label: v.label, text: v.text)], anchor: v.number)
+            }
+            return out
+        }
+        var seen = Set<Int>()
+        var cur: (kind: BookBlock.Kind, level: Int, flush: Bool, pieces: [Piece])?
         func flush() {
-            if let f = cur.first { blocks.append(ReaderBlock(id: f.number, headings: curHeads, verses: cur, continuation: cont)) }
-            cur = []; curHeads = []
+            if let c = cur, let f = c.pieces.first { add(c.kind, level: c.level, flush: c.flush, pieces: c.pieces, anchor: f.verse) }
+            cur = nil
         }
-        for v in items {
-            let starts = showHeadings && !v.headings.isEmpty
-            if starts { flush(); cont = false; curHeads = v.headings }
-            else if cur.count >= paragraphChunk { flush(); cont = true }
-            cur.append(v)
+        var lastKind: BookBlock.Kind = .prose
+        for lp in layout {
+            if lp.kind == "b" {
+                flush()
+                if let last = out.last, last.kind != .blank { add(.blank, pieces: [], anchor: last.anchorVerse) }
+                continue
+            }
+            guard let v = byNumber[lp.verse] else { continue }
+            let first = !seen.contains(v.number)
+            let piece = Piece(verse: v.number, end: v.endNumber, label: first ? v.label : nil, text: lp.text)
+            let opens = lp.kind != "+"
+            var kind: BookBlock.Kind { switch lp.kind {
+                case "q", "qr": return .poetry
+                case "li": return .list
+                case "+": return lastKind
+                default: return .prose } }
+            if first && !v.headings.isEmpty && showHeadings {
+                flush(); addHeadings(v)
+                // el trozo que sigue a un título abre bloque aunque fuera continuación
+                cur = (kind, lp.level, lp.kind == "m", [piece])
+                lastKind = kind
+            } else if opens || cur == nil {
+                flush()
+                cur = (kind, lp.level, lp.kind == "m" || lp.kind == "pmo", [piece])
+                lastKind = kind
+            } else {
+                cur?.pieces.append(piece)
+            }
+            seen.insert(v.number)
         }
         flush()
-        return blocks
+        // versículos sin trozos de maquetación (datos incompletos): no se pierden
+        for v in items where !seen.contains(v.number) {
+            add(.prose, flush: true, pieces: [Piece(verse: v.number, end: v.endNumber, label: v.label, text: v.text)], anchor: v.number)
+        }
+        return out
+    }
+
+    /// Bloque al que desplazarse para ver `verse` (incluye los títulos que lo preceden).
+    static func blockID(for verse: Int, in blocks: [BookBlock]) -> Int? {
+        guard var i = blocks.firstIndex(where: { $0.contains(verse) }) else { return nil }
+        while i > 0, blocks[i - 1].kind == .heading { i -= 1 }
+        return blocks[i].id
     }
 }

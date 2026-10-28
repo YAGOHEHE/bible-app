@@ -54,6 +54,15 @@ struct VerseRepository {
         }
     }
 
+    func layout(translationId: String, book: Int, chapter: Int) throws -> [LayoutPiece] {
+        try db.reader.read {
+            try LayoutPiece.fetchAll($0, sql: """
+                SELECT seq, kind, level, verse, text FROM layout
+                WHERE translation_id = ? AND book = ? AND chapter = ? ORDER BY seq
+                """, arguments: [translationId, book, chapter])
+        }
+    }
+
     func maxVerse(translationId: String, book: Int, chapter: Int) throws -> Int? {
         try db.reader.read {
             try Int.fetchOne($0, sql: "SELECT MAX(verse) FROM verses WHERE translation_id = ? AND book = ? AND chapter = ?",

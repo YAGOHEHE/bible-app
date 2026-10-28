@@ -4,7 +4,7 @@ import Observation
 enum VerseLayout: String, CaseIterable, Identifiable {
     case perLine, paragraph
     var id: String { rawValue }
-    var label: String { self == .perLine ? "Un versículo por línea" : "Párrafo corrido" }
+    var label: String { self == .perLine ? "Un versículo por línea" : "Párrafos" }
 }
 
 enum FontScale {
@@ -30,7 +30,7 @@ final class AppSettings {
         let fs = defaults.object(forKey: "set.fontScale") as? Double ?? 1.0
         fontScale = FontScale.clamp(fs)
         themeChoice = ThemeChoice(rawValue: defaults.string(forKey: "set.theme") ?? "") ?? .system
-        verseLayout = VerseLayout(rawValue: defaults.string(forKey: "set.layout") ?? "") ?? .perLine
+        verseLayout = VerseLayout(rawValue: defaults.string(forKey: "set.layout") ?? "") ?? .paragraph
         showHeadings = defaults.object(forKey: "set.headings") as? Bool ?? true
     }
 

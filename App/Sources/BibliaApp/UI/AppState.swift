@@ -20,6 +20,7 @@ final class AppState {
     var book = 43
     var chapter = 1
     var items: [DisplayVerse] = []
+    var layout: [LayoutPiece] = []
     var selectedVerses: Set<Int> = []
     var anchorVerse = 1
     var scrollRequest = ScrollRequest(token: 0, verse: 1)
@@ -131,6 +132,7 @@ final class AppState {
             let ref = translationId == "KJV" ? nil :
                 try repo.maxVerse(translationId: "KJV", book: book, chapter: chapter)
             items = ChapterBuilder.build(verses: vs, headings: hs, referenceMax: ref)
+            layout = try repo.layout(translationId: translationId, book: book, chapter: chapter)
             try loadParallel(repo)
         } catch {
             load = .failed("\(error)")

@@ -42,10 +42,21 @@ struct Heading: Codable, FetchableRecord, Hashable {
     var chapter: Int
     var verse: Int          // el título se muestra antes de este versículo
     var text: String
+    var kind: String? = "s1"   // ms | s1 | s2 | d | r
 
     enum CodingKeys: String, CodingKey {
-        case translationId = "translation_id", book, chapter, verse, text
+        case translationId = "translation_id", book, chapter, verse, text, kind
     }
+}
+
+/// Trozo de un versículo dentro de un bloque de maquetación (tabla `layout`).
+/// `kind`: p | m | q | qr | li | pmo | b (abre bloque) o "+" (continúa el bloque anterior).
+struct LayoutPiece: Codable, FetchableRecord, Hashable {
+    var seq: Int
+    var kind: String
+    var level: Int
+    var verse: Int
+    var text: String
 }
 
 struct VerseWord: Codable, FetchableRecord, Hashable {

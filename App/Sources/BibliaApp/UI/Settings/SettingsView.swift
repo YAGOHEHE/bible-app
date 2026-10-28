@@ -23,7 +23,7 @@ struct SettingsView: View {
                         Text("\(Int((s.fontScale * 100).rounded())) %").monospacedDigit().frame(width: 52, alignment: .trailing)
                     }
                 }
-                Picker("Disposición", selection: $s.verseLayout) {
+                Picker("Diseño", selection: $s.verseLayout) {
                     ForEach(VerseLayout.allCases) { Text($0.label).tag($0) }
                 }
                 Toggle("Mostrar títulos de sección", isOn: $s.showHeadings)

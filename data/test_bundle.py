@@ -17,10 +17,11 @@ class BundleTests(unittest.TestCase):
 
     def test_integrity_and_meta(self):
         self.assertEqual(self.q("PRAGMA integrity_check"), [("ok",)])
-        self.assertEqual(self.q("PRAGMA user_version"), [(1,)])
+        self.assertEqual(self.q("PRAGMA user_version"), [(2,)])
         self.assertEqual(self.q("PRAGMA journal_mode")[0][0].lower(), "delete")
         meta = dict(self.q("SELECT key,value FROM meta"))
-        self.assertEqual(meta["schema_version"], "1")
+        self.assertEqual(meta["schema_version"], "2")
+        self.assertEqual(meta["structure_source:RV1909"], "BSB (adaptada por versículo)")
         self.assertIn("built_at", meta)
 
     def test_translations_and_counts(self):
@@ -82,6 +83,48 @@ class BundleTests(unittest.TestCase):
 
     def test_headings(self):
         self.assertTrue(self.q("SELECT 1 FROM headings WHERE translation_id='CUV' AND book=43 AND chapter=3 AND verse=1"))
+
+    # ---- maquetación (schema 2)
+    def test_poetry_psalm_23(self):
+        for t in IDS:
+            n = self.q("SELECT COUNT(*) FROM layout WHERE translation_id=? AND book=19 AND chapter=23 AND kind='q'", t)[0][0]
+            self.assertGreaterEqual(n, 6, t)
+
+    def test_kjv_pilcrow_paragraphs(self):
+        # Gén 1:6 y 1:9 abren párrafo (¶ en la KJV)
+        for v in (6, 9, 14):
+            self.assertEqual(self.q("SELECT kind FROM layout WHERE translation_id='KJV' AND book=1 AND chapter=1 AND verse=? ORDER BY seq LIMIT 1", v), [("p",)])
+
+    def test_john_3_has_paragraphs(self):
+        for t in IDS:
+            n = self.q("SELECT COUNT(*) FROM layout WHERE translation_id=? AND book=43 AND chapter=3 AND kind IN ('p','m')", t)[0][0]
+            self.assertGreater(n, 1, t)
+
+    def test_pieces_concatenate_to_verse_text(self):
+        for t in IDS:
+            pieces = {}
+            for k, tx in self.q("SELECT book||'-'||chapter||'-'||verse, text FROM layout WHERE translation_id=? AND kind!='b' ORDER BY book,chapter,seq", t):
+                pieces.setdefault(k, []).append(tx)
+            bad = 0
+            for k, tx in self.q("SELECT book||'-'||chapter||'-'||verse, text FROM verses WHERE translation_id=?", t):
+                if "".join("".join(pieces.get(k, [])).split()) != "".join(tx.split()):
+                    bad += 1
+            self.assertEqual(bad, 0, t)
+
+    def test_rv1909_no_single_block_chapters(self):
+        rows = self.q("""SELECT v.book, v.chapter, COUNT(*) FROM verses v WHERE translation_id='RV1909' GROUP BY v.book, v.chapter
+                         HAVING COUNT(*) > 1""")
+        single = 0
+        for b, c, n in rows:
+            blocks = self.q("SELECT COUNT(*) FROM layout WHERE translation_id='RV1909' AND book=? AND chapter=? AND kind NOT IN ('+','b')", b, c)[0][0]
+            if blocks <= 1:
+                single += 1
+        print("RV1909 chapters (>1 verse) with a single block:", single, "of", len(rows))
+        self.assertLess(single, len(rows) * 0.05)
+
+    def test_heading_kinds(self):
+        self.assertTrue(self.q("SELECT 1 FROM headings WHERE translation_id='CUV' AND book=19 AND chapter=3 AND kind='d'"))
+        self.assertTrue(self.q("SELECT 1 FROM headings WHERE translation_id='KJV' AND kind='d'"))
 
 
 if __name__ == "__main__":

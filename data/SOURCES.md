@@ -44,3 +44,9 @@ Notes
 ## Book names
 
 Names and abbreviations are factual data (English, Spanish, Chinese); the Chinese and Spanish names were taken from the project's own book table in `/Users/jiaheqiu/mcp/jingdu-bible-mcp/server.py` (not from any copyrighted Bible data), abbreviations chosen as common standard forms.
+
+## Estructura del texto (tabla `layout`, schema_version 2)
+
+* **CUV, KJV, ASV**: párrafos, poesía (`q` por nivel), saltos de estrofa (`b`) y `¶` (KJV) salen del JSON de HelloAO (`line_break`, `poem`, `lineBreak`, `hebrew_subtitle` -> título `d`).
+* **RV1909**: ninguna fuente libre trae estructura. Se toma prestada de la **Berean Standard Bible** (USFM de eBible.org, `https://eBible.org/Scriptures/engbsb_usfm.zip`, dominio público: https://berean.bible/terms.htm) y se aplica por versículos enteros (un corte en mitad de un versículo se mueve al siguiente; versículos ausentes en la plantilla = prosa continua). No se copian títulos `\s` ni `\d`. En `meta`: `structure_source:RV1909 = 'BSB (adaptada por versículo)'`.
+* Fuera de alcance: Strong en español desde el USFM de RV1909; palabras de Jesús en rojo (`wordsOfJesus`).

@@ -164,36 +164,198 @@ def flatten(items):
     return "".join(out)
 
 
+def parse_chapter_layout(content, lang):
+    """HelloAO chapter content -> (verses, headings, pieces).
+
+    verses:  [(number, text)]            plain text, one line (unchanged vs schema 1)
+    headings:[(verse, text, kind)]       kind 's1' (heading) | 'd' (hebrew_subtitle)
+    pieces:  [(kind, level, verse, text)] kind = block kind opening a block, or '+' (continuation)
+    """
+    nz = norm_zh if lang == "zh" else norm
+    verses, headings, pieces = [], [], []
+    pending = []
+    # estado de maquetación
+    need_new = True        # el próximo trozo abre bloque
+    pending_para = True    # ... y ese bloque es un párrafo (p) en vez de continuación (m)
+    last_kind = None       # tipo del último bloque abierto
+
+    def emit(kind_if_new, level, verse, text, poetic):
+        nonlocal need_new, pending_para, last_kind
+        text = nz(text)
+        if not text:
+            return
+        open_new = need_new or last_kind is None or (poetic != (last_kind in ("q", "qr"))) \
+            or (poetic and level != cur_level[0])
+        if open_new:
+            if poetic:
+                k = kind_if_new
+            elif last_kind in ("q", "qr", "li") and not pending_para:
+                k = "m"
+            else:
+                k = "p"
+            pieces.append((k, level, verse, text))
+            last_kind = k
+            cur_level[0] = level
+        else:
+            pieces.append(("+", level, verse, text))
+        need_new = False
+        pending_para = False
+
+    cur_level = [1]
+    for it in content:
+        t = it["type"]
+        if t in ("heading", "hebrew_subtitle"):
+            pending.append((flatten(it["content"]), "s1" if t == "heading" else "d"))
+            need_new = True; pending_para = True
+        elif t == "line_break":
+            if last_kind in ("q", "qr", "li") and pieces and pieces[-1][0] != "b":
+                pieces.append(("b", 1, pieces[-1][2], ""))
+            need_new = True; pending_para = True
+        elif t == "verse":
+            n = it["number"]
+            text = nz(flatten(it["content"]))
+            if not text:
+                pending = []
+                continue
+            for h, k in pending:
+                h = nz(h)
+                if h:
+                    headings.append((n, h, k))
+            pending = []
+            verses.append((n, text))
+            first = True
+            for x in it["content"]:
+                if isinstance(x, str):
+                    # ¶ abre párrafo (gana sobre line_break: mismo efecto)
+                    segs = x.split("\u00b6")
+                    for i, seg in enumerate(segs):
+                        if i > 0:
+                            need_new = True; pending_para = True
+                        if seg.strip():
+                            if first and last_kind in ("q", "qr"):
+                                pass
+                            emit("p", 1, n, seg, False)
+                            first = False
+                elif isinstance(x, dict):
+                    if "text" in x:
+                        poem = x.get("poem")
+                        if poem:
+                            if first:
+                                need_new = True   # un versículo poético empieza línea nueva
+                            emit("q", int(poem), n, x["text"], True)
+                        else:
+                            emit("p", 1, n, x["text"], False)
+                        first = False
+                    elif x.get("lineBreak"):
+                        need_new = True
+                        if last_kind not in ("q", "qr", "li"):
+                            pending_para = True
+    return verses, headings, pieces
+
+
 def load_helloao(tid, lang):
     hid = TRANSLATIONS[tid][0]
     path = fetch(f"{HELLOAO}/{hid}/complete.json", f"{hid}.complete.json")
     d = json.loads(path.read_text(encoding="utf-8"))
-    verses, headings = [], []
+    verses, headings, layout = [], [], []
     for b in d["books"]:
         bn = b["order"]
         assert 1 <= bn <= 66, (hid, b["id"], bn)
         for ch in b["chapters"]:
             cn = ch["chapter"]["number"]
-            pending = []
-            for it in ch["chapter"]["content"]:
-                t = it["type"]
-                if t == "heading":
-                    pending.append(flatten(it["content"]))
-                elif t == "hebrew_subtitle":
-                    pending.append(flatten(it["content"]))
-                elif t == "verse":
-                    text = flatten(it["content"])
-                    text = norm_zh(text) if lang == "zh" else norm(text)
-                    if not text:
-                        pending = []  # omitted verse in this edition
-                        continue
-                    for h in pending:
-                        h = norm_zh(h) if lang == "zh" else norm(h)
-                        if h:
-                            headings.append((tid, bn, cn, it["number"], h))
-                    pending = []
-                    verses.append((tid, bn, cn, it["number"], text))
-    return verses, headings
+            vs, hs, ps = parse_chapter_layout(ch["chapter"]["content"], lang)
+            verses += [(tid, bn, cn, n, t) for n, t in vs]
+            headings += [(tid, bn, cn, n, t, k) for n, t, k in hs]
+            layout += [(tid, bn, cn, i + 1, k, lvl, v, t) for i, (k, lvl, v, t) in enumerate(ps)]
+    return verses, headings, layout
+
+
+# ---------------------------------------------------------------- BSB structure template (for RV1909)
+BSB_URL = "https://eBible.org/Scriptures/engbsb_usfm.zip"
+BLOCK_MARK = re.compile(r"^\\(p|m|pmo|pm|pi\d?|mi|nb|q\d?|qr|qc|qm\d?|li\d?|lim\d?|b)(?:\s|$)")
+
+
+def load_bsb_template():
+    """(book, chapter, verse) -> (kind, level, blank_before) para versículos que ABREN bloque.
+
+    Un versículo abre bloque si un marcador de bloque (\\m, \\p, \\q1, \\li1...) aparece desde
+    el versículo anterior hasta él. Marcadores en mitad de un versículo se aplican al
+    versículo siguiente (los versículos no se parten). Títulos \\s y \\d no se copian.
+    """
+    zpath = fetch(BSB_URL, "engbsb_usfm.zip")
+    tmpl = {}
+    with zipfile.ZipFile(zpath) as z:
+        files = {}
+        for n in z.namelist():
+            m = re.match(r"\d+-([0-9A-Z]{3})engbsb\.usfm$", n)
+            if m:
+                files[m.group(1)] = n
+        for bn, code in enumerate(USFM_CODES, 1):
+            chap = 0
+            marker = None; blank = False
+            for line in z.read(files[code]).decode("utf-8").splitlines():
+                line = line.rstrip()
+                m = re.match(r"\\c (\d+)", line)
+                if m:
+                    chap = int(m.group(1)); marker = None; blank = False
+                    continue
+                bm = BLOCK_MARK.match(line)
+                if bm:
+                    mk = bm.group(1)
+                    if mk == "b":
+                        blank = True
+                    else:
+                        marker = mk
+                vm = re.search(r"\\v (\d+)", line)
+                if vm and chap:
+                    v = int(vm.group(1))
+                    if marker:
+                        mk = marker
+                        if mk.startswith("q"):
+                            k, lvl = ("qr", 1) if mk == "qr" else ("q", int(mk[1:] or 1))
+                        elif mk.startswith("li"):
+                            k, lvl = "li", int(re.sub(r"\D", "", mk) or 1)
+                        elif mk == "pmo":
+                            k, lvl = "pmo", 1
+                        elif mk == "m" or mk == "nb":
+                            k, lvl = "m", 1
+                        else:
+                            k, lvl = "p", 1
+                        tmpl[(bn, chap, v)] = (k, lvl, blank)
+                    marker = None; blank = False
+                    # un marcador en la MISMA línea tras \v (p. ej. "\\v 5 ... \\q2") se trata como mitad de versículo
+    return tmpl
+
+
+def layout_from_template(tid, verses, tmpl):
+    """RV1909: aplica la plantilla por versículos enteros. verses = [(tid,b,c,v,text)]."""
+    layout = []
+    seq = {}
+    last = {}
+    for (_, b, c, v, text) in verses:
+        key = (b, c)
+        seq[key] = seq.get(key, 0)
+        t = tmpl.get((b, c, v))
+        prev = last.get(key)
+        rows = []
+        if t is None:
+            kind = "+" if prev else "p"
+            lvl = 1
+        else:
+            kind, lvl, blank = t
+            if prev is None and kind == "m":
+                kind = "p"
+            if blank and prev in ("q", "qr", "li"):
+                rows.append(("b", 1, v, ""))
+        rows.append((kind, lvl, v, text))
+        for (k, l, vv, tx) in rows:
+            seq[key] += 1
+            layout.append((tid, b, c, seq[key], k, l, vv, tx))
+        if kind != "+":
+            last[key] = kind
+        elif key not in last:
+            last[key] = "p"
+    return layout
 
 
 # ---------------------------------------------------------------- KJV + Strong's
@@ -344,7 +506,10 @@ CREATE TABLE verses(translation_id TEXT NOT NULL, book INTEGER NOT NULL, chapter
   text TEXT NOT NULL, PRIMARY KEY(translation_id, book, chapter, verse)) WITHOUT ROWID;
 CREATE VIRTUAL TABLE verses_fts USING fts5(text, translation_id UNINDEXED, book UNINDEXED, chapter UNINDEXED, verse UNINDEXED, tokenize='trigram');
 CREATE TABLE headings(translation_id TEXT NOT NULL, book INTEGER NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL,
-  text TEXT NOT NULL);
+  text TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 's1');
+CREATE TABLE layout(translation_id TEXT NOT NULL, book INTEGER NOT NULL, chapter INTEGER NOT NULL,
+  seq INTEGER NOT NULL, kind TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1, verse INTEGER NOT NULL, text TEXT NOT NULL,
+  PRIMARY KEY(translation_id, book, chapter, seq)) WITHOUT ROWID;
 CREATE INDEX headings_idx ON headings(translation_id, book, chapter);
 CREATE TABLE verse_words(translation_id TEXT NOT NULL, book INTEGER NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL,
   idx INTEGER NOT NULL, word TEXT NOT NULL, strong TEXT, PRIMARY KEY(translation_id, book, chapter, verse, idx)) WITHOUT ROWID;
@@ -383,13 +548,19 @@ def main():
         db.executemany("INSERT INTO book_names VALUES(?,?,?,?)",
                        [(n, "en", en, ena), (n, "es", es, esa), (n, "zh", zf, zs)])
 
+    bsb = None
     for tid, (hid, name, lang) in TRANSLATIONS.items():
-        verses, headings = load_helloao(tid, lang)
+        verses, headings, layout = load_helloao(tid, lang)
         db.executemany("INSERT INTO verses VALUES(?,?,?,?,?)", verses)
         db.executemany("INSERT INTO verses_fts(text,translation_id,book,chapter,verse) VALUES(?,?,?,?,?)",
                        [(v[4], v[0], v[1], v[2], v[3]) for v in verses])
-        db.executemany("INSERT INTO headings VALUES(?,?,?,?,?)", headings)
-        print(f"{tid}: {len(verses)} verses, {len(headings)} headings")
+        if tid == "RV1909":
+            if bsb is None:
+                bsb = load_bsb_template()
+            layout = layout_from_template(tid, verses, bsb)
+        db.executemany("INSERT INTO headings VALUES(?,?,?,?,?,?)", headings)
+        db.executemany("INSERT INTO layout VALUES(?,?,?,?,?,?,?,?)", layout)
+        print(f"{tid}: {len(verses)} verses, {len(headings)} headings, {len(layout)} layout rows")
 
     words = load_kjv_words()
     db.executemany("INSERT INTO verse_words VALUES(?,?,?,?,?,?,?)", words)
@@ -399,12 +570,13 @@ def main():
     db.executemany("INSERT INTO lexicon VALUES(?,?,?,?,?,?)", lex)
     print(f"lexicon: {len(lex)}")
 
-    db.execute("INSERT INTO meta VALUES('schema_version','1')")
+    db.execute("INSERT INTO meta VALUES('schema_version','2')")
+    db.execute("INSERT INTO meta VALUES('structure_source:RV1909','BSB (adaptada por versículo)')")
     db.execute("INSERT INTO meta VALUES('built_at',?)", (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
     db.commit()
     db.execute("INSERT INTO verses_fts(verses_fts) VALUES('optimize')")
     db.commit()
-    db.execute("PRAGMA user_version=1")
+    db.execute("PRAGMA user_version=2")
     db.execute("VACUUM")
     db.close()
     print(f"wrote {OUT} ({OUT.stat().st_size/1e6:.1f} MB); HTTP requests this run: {REQUESTS_MADE}")

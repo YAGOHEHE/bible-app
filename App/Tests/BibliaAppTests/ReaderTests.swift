@@ -93,13 +93,75 @@ private func chapter(_ tr: String, _ book: Int, _ ch: Int) throws -> [DisplayVer
         #expect(ResumeState.loadRecents(from: d) == r)
     }
 
-    @Test func blockBuilderModes() {
-        let items = (1...20).map { DisplayVerse(number: $0, endNumber: $0, text: "t", headings: $0 == 10 ? ["H"] : []) }
-        #expect(BlockBuilder.build(items: items, paragraph: false, showHeadings: true).count == 20)
-        let p = BlockBuilder.build(items: items, paragraph: true, showHeadings: true)
-        #expect(p.map(\.id) == [1, 9, 10, 18])
-        #expect(p.first { $0.id == 10 }?.headings == ["H"])
-        #expect(BlockBuilder.build(items: items, paragraph: false, showHeadings: false).allSatisfy { $0.headings.isEmpty })
+    private func dv(_ n: Int, _ e: Int? = nil, heads: [String] = [], kinds: [String] = []) -> DisplayVerse {
+        DisplayVerse(number: n, endNumber: e ?? n, text: "t\(n)", headings: heads, headingKinds: kinds)
+    }
+    private func lp(_ seq: Int, _ k: String, _ v: Int, _ t: String? = nil, level: Int = 1) -> LayoutPiece {
+        LayoutPiece(seq: seq, kind: k, level: level, verse: v, text: t ?? "t\(v)")
+    }
+
+    @Test func blocksPerVerseMode() {
+        let items = [dv(1), dv(2, heads: ["H"], kinds: ["s1"]), dv(3)]
+        let b = ChapterBuilder.blocks(items: items, layout: [], mode: .perVerse, showHeadings: true)
+        #expect(b.map(\.kind) == [.prose, .heading, .prose, .prose])
+        #expect(ChapterBuilder.blocks(items: items, layout: [], mode: .perVerse, showHeadings: false).count == 3)
+    }
+
+    @Test func verseSplitBetweenProseAndPoetry() {
+        // versículo 2 repartido: mitad en prosa, mitad en una línea q2
+        let items = [dv(1), dv(2), dv(3)]
+        let layout = [lp(1, "p", 1), lp(2, "+", 2, "t2a"), lp(3, "q", 2, "t2b", level: 2), lp(4, "q", 3, level: 1)]
+        let b = ChapterBuilder.blocks(items: items, layout: layout, mode: .book, showHeadings: true)
+        #expect(b.map(\.kind) == [.prose, .poetry, .poetry])
+        #expect(b[0].pieces.map(\.verse) == [1, 2])
+        #expect(b[0].pieces.map(\.label) == ["1", "2", nil].prefix(2).map { $0 })
+        #expect(b[1].pieces.first?.verse == 2 && b[1].pieces.first?.label == nil)   // número solo en la 1ª aparición
+        #expect(b[1].level == 2)
+        #expect(b[2].pieces.first?.label == "3")
+        #expect(b.allSatisfy { $0.contains(2) == ($0.id <= 1) })
+    }
+
+    @Test func mergedVerseAndHeadingOnAbsentVerse() {
+        let v: (Int) -> Verse = { Verse(translationId: "X", book: 1, chapter: 1, verse: $0, text: "t\($0)") }
+        // el verso 3 no existe (fusionado en 2): 2 se etiqueta "2–3" y el título del 3 cae en él
+        let h = Heading(translationId: "X", book: 1, chapter: 1, verse: 3, text: "Título", kind: "s2")
+        let items = ChapterBuilder.build(verses: [v(1), v(2), v(4)], headings: [h])
+        #expect(items.map(\.label) == ["1", "2–3", "4"])
+        #expect(items[1].headings == ["Título"] && items[1].headingKinds == ["s2"])
+        let layout = [lp(1, "p", 1), lp(2, "+", 2), lp(3, "+", 4)]
+        let b = ChapterBuilder.blocks(items: items, layout: layout, mode: .book, showHeadings: true)
+        #expect(b.map(\.kind) == [.prose, .heading, .prose])      // el título parte el párrafo
+        #expect(b[1].headingKind == "s2" && b[1].pieces.first?.text == "Título")
+        #expect(b[2].pieces.first?.label == "2–3")
+        #expect(b[2].pieces.last?.label == "4")
+        #expect(ChapterBuilder.blockID(for: 3, in: b) == 1)         // 3 está dentro de 2–3; incluye el título
+        #expect(ChapterBuilder.blockID(for: 1, in: b) == 0)
+    }
+
+    @Test func blankLinesBetweenStanzas() {
+        let items = [dv(1), dv(2), dv(3)]
+        let layout = [lp(1, "q", 1), lp(2, "q", 2), lp(3, "b", 2, ""), lp(4, "q", 3)]
+        let b = ChapterBuilder.blocks(items: items, layout: layout, mode: .book, showHeadings: true)
+        #expect(b.map(\.kind) == [.poetry, .poetry, .blank, .poetry])
+    }
+
+    @Test(.enabled(if: hasDB)) func realChaptersHaveStructure() throws {
+        let db = try openDB()
+        let repo = VerseRepository(db: db)
+        func blocks(_ t: String, _ b: Int, _ c: Int) throws -> [BookBlock] {
+            let items = try chapter(t, b, c)
+            return ChapterBuilder.blocks(items: items, layout: try repo.layout(translationId: t, book: b, chapter: c),
+                                         mode: .book, showHeadings: true)
+        }
+        for t in ["CUV", "KJV", "ASV", "RV1909"] {
+            #expect(try blocks(t, 19, 23).filter { $0.kind == .poetry }.count >= 6, "Sal 23 \(t)")
+            #expect(try blocks(t, 43, 3).filter { $0.kind == .prose }.count > 1, "Jn 3 \(t)")
+        }
+        // cada versículo del capítulo aparece en algún bloque
+        let items = try chapter("CUV", 4, 1)
+        let b = try blocks("CUV", 4, 1)
+        #expect(items.allSatisfy { v in b.contains { $0.contains(v.number) } })
+        #expect(b.flatMap(\.pieces).first { $0.verse == 20 }?.label == "20–21")
     }
 
     @MainActor @Test(.enabled(if: hasDB)) func appStateFlow() throws {
