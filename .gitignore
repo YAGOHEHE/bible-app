@@ -1,0 +1,10 @@
+build/
+.build/
+*.sqlite-journal
+data/cache/
+.DS_Store
+.swiftpm/
+App/.build/
+App/Package.resolved.bak
+*.xcodeproj
+App/Resources/bible.sqlite

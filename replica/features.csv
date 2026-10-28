@@ -1,0 +1,80 @@
+feature,area,priority,original,clone,notes
+Leer un capítulo con texto desplazable (S01),lectura,must,yes,no,núcleo del producto
+Retomar la lectura en el último libro/capítulo/versículo al abrir,lectura,must,yes,no,settings BookId/ChapterId/VerseId
+Capítulo anterior/siguiente (botones y atajos de teclado),lectura,must,yes,no,"en el original ""翻页"""
+Selector de libro y capítulo (S02),navegación,must,yes,no,cuadrícula de libros AT/NT y capítulos
+Libros recientes en el selector,navegación,should,yes,no,CatalogBookHistroy
+"Ir a referencia escribiendo ""Juan 3:16"" / ""约3:16"" / ""John 3:16""",navegación,must,yes,no,parser con alias de libros en zh/es/en
+Nombres de libros en el idioma de cada versión,lectura,should,yes,no,tabla Books por versión
+Títulos de sección (小标题) antes del versículo,lectura,must,yes,no,tabla Titles opcional
+Enlaces de referencia dentro de los títulos de sección (popover con el pasaje),lectura,could,yes,no,solo modo normal en el original
+"Modo ""cada versículo en su línea"" (每节另起一行)",lectura,should,yes,no,alterna párrafo corrido / lista
+Seleccionar versículo(s) y copiar con formato,lectura,must,yes,no,
+Formato de copia/compartir personalizable,lectura,could,yes,no,plantilla con {libro} {ref} {texto}
+Vista paralela de versiones (对照模式) en la misma pantalla (S03),versiones,must,yes,no,reseña principal de usuarios
+Vista dividida con panel lateral (SecondSplit),versiones,should,yes,no,segundo panel conmutable
+Desplazamiento sincronizado entre versiones paralelas,versiones,must,yes,no,parte difícil; ver recon.md
+Color de comparación configurable,ajustes,could,yes,no,
+Selector de versión activa y lista de versiones (S04),versiones,must,yes,no,Translations / CurrentBible
+Gestor de versiones: instalar/quitar módulos incluidos (S04),versiones,should,yes,no,catálogo local; sin descargas remotas en v1
+Mensaje claro si la versión no está instalada o no tiene el libro,versiones,must,yes,no,estado de error de S01/S04
+Biblia china 和合本 simplificada (dominio público),contenido,must,yes,no,fuente abierta
+Reina-Valera 1909 (dominio público),contenido,must,yes,no,sustituye a RVR1995
+KJV y ASV (dominio público),contenido,must,yes,no,
+KJV con números Strong (dominio público),contenido,must,yes,no,permite el flujo Strong
+Etiquetas Strong por palabra en el texto,estudio,must,yes,no,tokens <WG25>/<WH430>
+Tocar palabra para abrir el panel Strong (S06),estudio,must,yes,no,objetivo táctil a nivel de palabra
+Panel Strong: palabra original; transliteración; definición (S06),estudio,must,yes,no,diccionarios Strong públicos en inglés
+Versículos relacionados con el mismo número Strong,estudio,should,yes,no,"""versículos relacionados"" del original"
+Seleccionar versículo en el panel original desplaza la lectura a ese versículo,estudio,could,yes,no,
+Traducción literal (直译) y análisis de palabra (字汇分析),estudio,could,yes,no,requiere datos de morfología
+Textos originales griego/hebreo como versiones,contenido,could,yes,no,solo si hay texto libre disponible (p. ej. WLC/SBLGNT con licencia abierta)
+Etiquetas de morfología <WTG...>,estudio,could,yes,no,
+Palabras no traducidas marcadas con {…},lectura,could,yes,no,
+Búsqueda de texto (S05),búsqueda,must,yes,no,
+Búsqueda en chino (FTS con tokenización por carácter/n-gramas),búsqueda,must,yes,no,parte difícil
+Alcance de búsqueda: AT / NT / libro,búsqueda,should,yes,no,
+"Operador ""/"" como OR en la búsqueda",búsqueda,should,yes,no,changelog 2.0.4
+Historial de búsquedas,búsqueda,should,yes,no,SearchHistory
+Abrir resultado de búsqueda en el lector y resaltar coincidencia,búsqueda,must,yes,no,
+Estado sin resultados en la búsqueda,búsqueda,must,yes,no,
+Historial de lectura automático (翻页/跳转) (S07),historial,should,yes,no,tabla Auto
+Historial manual / marcadores,historial,could,yes,no,tabla Manual
+Tamaño de fuente (porcentaje),ajustes,must,yes,no,FontSizePercent
+Tema claro/oscuro (sigue al sistema) (S08),ajustes,must,yes,no,
+Esquemas de color (uno por modo claro/oscuro),ajustes,could,yes,no,
+Tipografía mixta CJK/Latín con fuentes elegibles,ajustes,should,yes,no,
+Ajustes de pantalla S08 (versiones; fuente; tema; formato),ajustes,must,yes,no,
+Mostrar/ocultar panel de comentario/original,ajustes,should,yes,no,CommentAndOriginal
+Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,no,adaptación nativa de escritorio
+Varias ventanas / restauración de ventana,plataforma,could,no,no,propio del clon en macOS
+Nombres de personas y lugares subrayados con enlace a diccionario,estudio,could,yes,no,necesita diccionario propio; fuera de v1
+Referencias cruzadas (串珠) como enlaces,estudio,could,yes,no,hay datos abiertos (Treasury of Scripture Knowledge)
+Importar localmente módulos que el usuario ya posee (SQLite Bible/Titles/Books/metadata),versiones,could,yes,no,solo local; nunca redistribuidos ni incluidos en la app
+Importar versiones con Strong en formato MySword,versiones,could,yes,no,solo importación local del usuario
+Notas del usuario con Markdown y enlaces a versículos,notas,could,yes,no,fuera de la primera versión (lectura y estudio primero)
+Búsqueda de notas,notas,could,yes,no,
+Resaltados / frases doradas (金句) con grupos de color,resaltados,could,yes,no,fuera de v1; tabla Goldenwords
+Planes de lectura con desfase de días,planes,could,yes,no,fuera de v1
+Progreso de plan por día,planes,could,yes,no,
+Comentarios (注释) como panel,comentarios,could,yes,no,fuera de v1; contenido propietario no incluible
+Devocionales (灵修) por día MMDD,devocionales,could,yes,no,fuera de v1
+Lectura en voz alta TTS (朗读),audio,could,yes,no,fuera de v1; se puede usar AVSpeechSynthesizer después
+MP3 propios y control de velocidad,audio,could,yes,no,fuera de v1
+Diccionario (辞典) con índice,diccionario,could,yes,no,fuera de v1
+Preguntas y respuestas bíblicas (圣经问答),contenido,could,yes,no,fuera de v1
+Mapas,mapas,could,yes,no,fuera de v1; hay datos abiertos (OpenBible geocoding)
+Cuentas de usuario / inicio de sesión (correo; teléfono; QQ),cuentas,skip,yes,no,el grupo de estudio no necesita cuentas; infraestructura de red del original
+Sincronización multidispositivo,sincronización,skip,yes,no,depende de servidor y cuentas; iCloud podría valorarse más adelante
+Copia de seguridad WebDAV,datos,skip,yes,no,fuera de alcance
+Transferencia de datos con Android/PC,datos,skip,yes,no,fuera de alcance
+Compartir en WeChat/QQ/Weibo y código QR,social,skip,yes,no,SDKs de terceros; solo el menú de compartir del sistema si hiciera falta
+Descarga por código/口令 de recursos,red,skip,yes,no,servidor del original
+Servicio y red del original (descargas de módulos y datos),red,skip,yes,no,no replicable
+Analítica y configuración online (Umeng),red,skip,yes,no,sin telemetría en el clon
+RVR1995 (Sociedades Bíblicas Unidas),contenido,skip,yes,no,con derechos de autor; se sustituye por Reina-Valera 1909
+NBLH (Lockman Foundation),contenido,skip,yes,no,con derechos de autor
+和合本 con marcado propio del original (小标题; subrayados de nombres),contenido,skip,yes,no,edición/revisión propia del desarrollador; el clon usa CUV de dominio público sin esos extras
+Comentarios 精读本注释 / 综合解读 / 陈终道讲义,contenido,skip,yes,no,con derechos de autor
+Léxico chino CBOL de 信望爱,contenido,skip,yes,no,con derechos de autor; se usan diccionarios Strong públicos en inglés
+Nombre; iconos y textos del original,marca,skip,yes,no,regla clean-room; ver replica-brand
