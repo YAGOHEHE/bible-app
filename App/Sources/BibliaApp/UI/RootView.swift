@@ -6,67 +6,60 @@ struct RootView: View {
     var body: some View {
         switch state.load {
         case .loading:
-            ProgressView().frame(minWidth: 600, minHeight: 400)
+            ProgressView().frame(minWidth: 800, minHeight: 500)
         case .missingData:
             ContentUnavailableView("Datos no encontrados", systemImage: "books.vertical",
                                    description: Text("No se encontró bible.sqlite dentro de la aplicación."))
-                .frame(minWidth: 600, minHeight: 400)
+                .frame(minWidth: 800, minHeight: 500)
         case .failed(let msg):
             ContentUnavailableView("Error al abrir los datos", systemImage: "exclamationmark.triangle",
-                                   description: Text(msg)).frame(minWidth: 600, minHeight: 400)
+                                   description: Text(msg)).frame(minWidth: 800, minHeight: 500)
         case .ready:
             NavigationSplitView {
                 BookSidebar()
+                    .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
             } detail: {
                 ReaderView()
             }
+            .navigationTitle("\(state.bookName(state.book)) \(state.chapter)")
+            .navigationSubtitle(state.currentTranslation?.name ?? state.translationId)
             .frame(minWidth: 800, minHeight: 500)
+            .toolbar { ReaderToolbar() }
         }
     }
 }
 
-/// S02 (placeholder): lista de libros desde la BD.
-struct BookSidebar: View {
+struct ReaderToolbar: ToolbarContent {
     @Environment(AppState.self) private var state
+    @Environment(AppSettings.self) private var settings
 
-    var body: some View {
-        @Bindable var s = state
-        List(selection: $s.selectedBook) {
-            ForEach(state.bookNames, id: \.book) { b in
-                Text(b.name).tag(b.book)
-            }
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button { state.goPrev() } label: { Image(systemName: "chevron.left") }
+                .help(state.prevPosition.map { "Capítulo anterior, \(state.bookName($0.book)) \($0.chapter)" } ?? "Principio de la Biblia")
+                .disabled(!state.canGoPrev)
+                .accessibilityLabel(state.prevPosition.map { "Capítulo anterior, \(state.bookName($0.book)) \($0.chapter)" } ?? "Capítulo anterior")
+            Button { state.goNext() } label: { Image(systemName: "chevron.right") }
+                .help(state.nextPosition.map { "Siguiente, \(state.bookName($0.book)) \($0.chapter)" } ?? "Final de la Biblia")
+                .disabled(!state.canGoNext)
+                .accessibilityLabel(state.nextPosition.map { "Siguiente, \(state.bookName($0.book)) \($0.chapter)" } ?? "Siguiente")
         }
-        .navigationSplitViewColumnWidth(min: 160, ideal: 200)
-        .onChange(of: state.selectedBook) { _, new in if let new { state.select(book: new) } }
-    }
-}
-
-/// S01 (mínimo): versículos como Text plano. S03/S05/S06/S07 son stubs.
-struct ReaderView: View {
-    @Environment(AppState.self) private var state
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("\(state.selectedBook.map(state.bookName) ?? "") \(state.chapter)").font(.title)
-                if state.verses.isEmpty {
-                    Text("Sin versículos para este capítulo.").foregroundStyle(.secondary)
-                }
-                ForEach(state.verses) { v in
-                    if let h = state.headings.first(where: { $0.verse == v.verse }) {
-                        Text(h.text).font(.headline).padding(.top, 8)
-                    }
-                    Text("\(v.verse) \(v.text)").textSelection(.enabled)
-                }
+        ToolbarItemGroup(placement: .primaryAction) {
+            Picker("Versión", selection: Binding(get: { state.translationId }, set: { state.setTranslation($0) })) {
+                ForEach(state.translations) { Text($0.id).tag($0.id) }
             }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .pickerStyle(.menu)
+            .help("Versión de la Biblia")
+            Button { settings.stepFont(-1) } label: { Image(systemName: "textformat.size.smaller") }
+                .help("Reducir tamaño (⌘−)").disabled(settings.fontScale <= FontScale.min + 0.001)
+            Button { settings.stepFont(1) } label: { Image(systemName: "textformat.size.larger") }
+                .help("Aumentar tamaño (⌘+)").disabled(settings.fontScale >= FontScale.max - 0.001)
         }
     }
 }
 
+// Stubs de siguientes cortes.
 struct ParallelView: View { var body: some View { Text("Paralelo (S03)") } }
 struct SearchResultsView: View { var body: some View { Text("Búsqueda (S05)") } }
 struct StrongPanel: View { var body: some View { Text("Strong (S06)") } }
 struct HistoryView: View { var body: some View { Text("Historial (S07)") } }
-struct SettingsView: View { var body: some View { Text("Ajustes (S08)").padding(40) } }

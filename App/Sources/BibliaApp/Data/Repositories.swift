@@ -14,6 +14,19 @@ struct TranslationRepository {
         }
     }
 
+
+    /// Capítulos por libro (máximo entre todas las versiones), índice = libro-1.
+    func canonicalChapterCounts() throws -> [Int] {
+        try db.reader.read { d in
+            var counts = [Int](repeating: 0, count: 66)
+            for r in try Row.fetchAll(d, sql: "SELECT book, MAX(chapter) AS c FROM verses GROUP BY book") {
+                let b: Int = r["book"]; let c: Int = r["c"]
+                if (1...66).contains(b) { counts[b - 1] = c }
+            }
+            return counts
+        }
+    }
+
     func chapterCount(translationId: String, book: Int) throws -> Int {
         try db.reader.read {
             try Int.fetchOne($0, sql: "SELECT MAX(chapter) FROM verses WHERE translation_id = ? AND book = ?",
@@ -36,8 +49,15 @@ struct VerseRepository {
     func headings(translationId: String, book: Int, chapter: Int) throws -> [Heading] {
         try db.reader.read {
             try Heading.fetchAll($0, sql: """
-                SELECT * FROM headings WHERE translation_id = ? AND book = ? AND chapter = ? ORDER BY verse
+                SELECT * FROM headings WHERE translation_id = ? AND book = ? AND chapter = ? ORDER BY rowid
                 """, arguments: [translationId, book, chapter])
+        }
+    }
+
+    func maxVerse(translationId: String, book: Int, chapter: Int) throws -> Int? {
+        try db.reader.read {
+            try Int.fetchOne($0, sql: "SELECT MAX(verse) FROM verses WHERE translation_id = ? AND book = ? AND chapter = ?",
+                             arguments: [translationId, book, chapter])
         }
     }
 
