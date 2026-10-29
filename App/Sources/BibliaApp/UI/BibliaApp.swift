@@ -7,6 +7,7 @@ struct BibliaApp: App {
     @State private var search: SearchModel
 
     init() {
+        LegacyMigration.runAtLaunch()
         let s = AppSettings()
         _settings = State(initialValue: s)
         let st = AppState(settings: s)
@@ -15,7 +16,7 @@ struct BibliaApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Biblia") {
             RootView()
                 .environment(state)
                 .environment(search)
@@ -29,6 +30,11 @@ struct BibliaApp: App {
         .defaultSize(width: 1280, height: 820)
         .commands { ReaderCommands(state: state, settings: settings, search: search) }
 
+        Window("Acerca de Biblia", id: "about") {
+            AboutView().environment(state)
+        }
+        .windowResizability(.contentSize)
+
         Settings {
             SettingsView()
                 .environment(state)
@@ -39,7 +45,7 @@ struct BibliaApp: App {
 }
 
 extension BibliaApp {
-    /// Argumentos de arranque (`open -a BibliaApp --args -startSearch 永生 -startGoto 约3:16`):
+    /// Argumentos de arranque (`open -a Biblia --args -startSearch 永生 -startGoto 约3:16`):
     /// NSUserDefaults los lee del dominio de argumentos. Útil para capturas y pruebas manuales.
     @MainActor private func applyLaunchArguments() {
         guard state.load == .ready else { return }
@@ -72,8 +78,12 @@ struct ReaderCommands: Commands {
     let state: AppState
     let settings: AppSettings
     let search: SearchModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("Acerca de Biblia") { openWindow(id: "about") }
+        }
         CommandMenu("Buscar") {
             Button("Buscar…") { search.activate() }
                 .keyboardShortcut("f", modifiers: .command)

@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// ~/Library/Application Support/BibliaApp/user.sqlite (lectura/escritura, con migraciones).
+/// ~/Library/Application Support/Biblia/user.sqlite (lectura/escritura, con migraciones).
 final class UserStore {
     let queue: DatabaseQueue
 
@@ -13,7 +13,7 @@ final class UserStore {
     static func defaultURL() throws -> URL {
         let dir = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                               appropriateFor: nil, create: true)
-            .appendingPathComponent("BibliaApp", isDirectory: true)
+            .appendingPathComponent(LegacyMigration.newFolder, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("user.sqlite")
     }

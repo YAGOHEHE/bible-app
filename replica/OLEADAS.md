@@ -12,7 +12,7 @@ No lances el siguiente hasta que el anterior termine con todo en verde.
 | 3.3 Búsqueda S05 + «ir a» (⌘L) + fix espacios KJV/ASV | ⏳ lanzado; comprobar con el Prompt 0 |
 | 3.4 Strong S06 + Historial S07 | Prompt 1 |
 | 4a Test · 4b Diff (paridad) | Prompt 2 |
-| 5 Marca + distribución al grupo | Prompt 3 (requiere tus decisiones) |
+| 3.3 Búsqueda · 3.4 Strong + historial · Ola 4 test + paridad · arreglos · Ola 5 marca + DMG | ✅ hecho — v1.0.0 |
 
 Reglas comunes que ya conocen los prompts: solo Command Line Tools (sin Xcode), `import Testing` (no XCTest),
 nunca `Bundle.module`, BD empaquetada solo lectura, nada copiado de `/Applications/精读圣经.app`,
