@@ -10,10 +10,11 @@ public final class UserStore {
         try Self.migrator.migrate(queue)
     }
 
-    public static func defaultURL() throws -> URL {
+    /// `folder`: carpeta dentro de Application Support («Biblia» para la app moderna, «Biblia Clásica» para la clásica).
+    public static func defaultURL(folder: String = LegacyMigration.newFolder) throws -> URL {
         let dir = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                               appropriateFor: nil, create: true)
-            .appendingPathComponent(LegacyMigration.newFolder, isDirectory: true)
+            .appendingPathComponent(folder, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("user.sqlite")
     }

@@ -22,6 +22,7 @@ let package = Package(
         .library(name: "BibliaCore", targets: ["BibliaCore"]),
         .executable(name: "BibliaApp", targets: ["BibliaApp"]),
         .executable(name: "BibliaClassic", targets: ["BibliaClassic"]),
+        .library(name: "ClassicKit", targets: ["ClassicKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", exact: "6.29.3"),
@@ -51,7 +52,7 @@ let package = Package(
             name: "BibliaCore",
             dependencies: [.product(name: "GRDB", package: "GRDB.swift"), "BundledSQLite"],
             path: ".",
-            exclude: ["Tests", "Package.swift", "Package.resolved", "Sources/BibliaApp", "Sources/BibliaClassic", "Sources/CSQLite", "Icon"],
+            exclude: ["Tests", "Package.swift", "Package.resolved", "Sources/BibliaApp", "Sources/BibliaClassic", "Sources/ClassicKit", "Sources/CSQLite", "Icon"],
             sources: ["Sources/BibliaCore"],
             resources: [.copy("Resources")]
         ),
@@ -61,9 +62,16 @@ let package = Package(
             path: "Sources/BibliaApp",
             swiftSettings: [.unsafeFlags(["-target", macOS14Target])]
         ),
+        // AppKit-side reader logic (palettes, fonts, chapter -> NSAttributedString, ReaderModel). Pure, no windows:
+        // unit-testable. 10.13-safe, no Swift Concurrency.
+        .target(
+            name: "ClassicKit",
+            dependencies: ["BibliaCore", .product(name: "GRDB", package: "GRDB.swift")],
+            path: "Sources/ClassicKit"
+        ),
         .executableTarget(
             name: "BibliaClassic",
-            dependencies: ["BibliaCore", .product(name: "GRDB", package: "GRDB.swift")],
+            dependencies: ["BibliaCore", "ClassicKit", .product(name: "GRDB", package: "GRDB.swift")],
             path: "Sources/BibliaClassic",
             linkerSettings: [.unsafeFlags([
                 // Frameworks/overlays auto-linked by GRDB & the SDK overlays that do not exist on 10.13 must be weak,
@@ -79,6 +87,11 @@ let package = Package(
             dependencies: ["BibliaApp", "BibliaCore"],
             path: "Tests/BibliaAppTests",
             swiftSettings: [.unsafeFlags(["-target", macOS14Target])]
+        ),
+        .testTarget(
+            name: "ClassicKitTests",
+            dependencies: ["ClassicKit", "BibliaCore"],
+            path: "Tests/ClassicKitTests"
         ),
         .testTarget(
             name: "BibliaCoreTests",
