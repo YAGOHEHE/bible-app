@@ -213,6 +213,31 @@ private func openDB() throws -> BibleDatabase { try BibleDatabase(path: try #req
         #expect(st.chapterAnnotations.highlights == [20: .pink])
         #expect(st.actionContext(scope: [20]).selectedCount == 1)
     }
+
+    @Test(.enabled(if: hasDB)) func plainClickTogglesAndAccumulates() throws {
+        let (st, d, suite) = try makeState(); defer { d.removePersistentDomain(forName: suite) }
+        st.setTranslation("RV1909")
+        st.jump(book: 43, chapter: 3, verse: 16)
+        st.clickVerse(16, shift: false, command: false)
+        #expect(st.selectedVerses == [16] && st.actionBarVisible)
+        st.clickVerse(18, shift: false, command: false)
+        #expect(st.selectedVerses == [16, 18])               // clic simple añade
+        st.clickVerse(20, shift: false, command: false)
+        #expect(st.selectedVerses == [16, 18, 20] && st.actionBarVerse == 20)
+        st.clickVerse(18, shift: false, command: false)
+        #expect(st.selectedVerses == [16, 20] && st.actionBarVisible)   // clic en marcado lo quita
+        st.highlightSelection(.green)
+        #expect(st.chapterAnnotations.highlights == [16: .green, 20: .green])
+        st.clickVerse(16, shift: false, command: false)
+        st.clickVerse(20, shift: false, command: false)
+        #expect(st.selectedVerses.isEmpty && !st.actionBarVisible)     // vacía → barra oculta
+        // ⇧-clic sigue añadiendo el rango; «Deseleccionar todo» vacía
+        st.clickVerse(16, shift: false, command: false)
+        st.clickVerse(18, shift: true, command: false)
+        #expect(st.selectedVerses == [16, 17, 18])
+        st.clearSelection()
+        #expect(st.selectedVerses.isEmpty && !st.actionBarVisible)
+    }
 }
 
 @Suite struct HighlightTokenTests {

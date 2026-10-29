@@ -563,15 +563,19 @@ final class AppState {
         if shift, let last = lastClickedVerse,
            let a = nums.firstIndex(of: last), let b = nums.firstIndex(of: n) {
             for i in min(a, b)...max(a, b) { selectedVerses.insert(nums[i]) }
-        } else if command {
-            if selectedVerses.contains(n) { selectedVerses.remove(n) } else { selectedVerses.insert(n) }
-        } else if selectedVerses == [n] {
-            selectedVerses = []
+        } else if selectedVerses.contains(n) {
+            // Clic (o ⌘-clic) en un versículo ya marcado: se quita; los demás siguen seleccionados.
+            selectedVerses.remove(n)
         } else {
-            selectedVerses = [n]
+            // Clic en uno nuevo: se añade a la selección (acumulativa, sin modificadores).
+            selectedVerses.insert(n)
         }
         lastClickedVerse = n
-        if !selectedVerses.isEmpty { actionBarVerse = n; actionBarVisible = true }
+        if selectedVerses.contains(n) {
+            actionBarVerse = n; actionBarVisible = true
+        } else if let anchor = selectedVerses.max() {
+            actionBarVerse = anchor
+        }
     }
 
     func clearSelection() { selectedVerses = [] }
