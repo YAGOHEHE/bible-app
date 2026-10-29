@@ -8,7 +8,7 @@ struct ParallelView: View {
 
     var body: some View {
         Group {
-            if state.parallelColumns.count < 2 {
+            if !state.glossMode && state.parallelColumns.count < 2 {
                 ContentUnavailableView {
                     Label("Activa otra versión para comparar", systemImage: "rectangle.split.2x1")
                 } description: {
@@ -17,7 +17,7 @@ struct ParallelView: View {
                     Button("Abrir gestor de versiones") { state.showVersions = true }
                 }
                 .foregroundStyle(theme.palette.textSecondary)
-            } else if state.parallelRows.isEmpty {
+            } else if (state.glossMode ? state.glossRows : state.parallelRows).isEmpty {
                 ContentUnavailableView {
                     Label("Capítulo no disponible", systemImage: "book.closed")
                 } description: {
@@ -31,7 +31,8 @@ struct ParallelView: View {
                                                                        columns: state.parallelColumns.count,
                                                                        layout: state.parallelLayout))
                 }
-                .id(state.chapterKey + state.parallelColumns.map(\.id).joined())
+                .id(state.chapterKey + state.parallelColumns.map(\.id).joined() + state.glossColumns.map(\.id).joined()
+                    + (state.glossMode ? "g" : "c"))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,9 +69,25 @@ private struct ParallelContent: View {
     @State private var tracking = false
     @FocusState private var focused: Bool
 
+    /// Estilo «Principal + glosas»: el intercalado, y el apilado de Columnas en ventana estrecha.
+    private var glossStyle: Bool { state.glossMode || stacked }
+    private var source: (rows: [ParallelRow], cols: [Translation]) {
+        state.glossMode ? (state.glossRows, state.glossColumns) : (state.parallelRows, state.parallelColumns)
+    }
+    private func groups() -> [GlossGroup] {
+        let src = source
+        let blocks = ChapterBuilder.blocks(items: state.items, layout: state.layout, mode: .book, showHeadings: settings.showHeadings)
+        return GlossBuilder.groups(rows: src.rows, blocks: blocks, columns: src.cols.map { ($0.id, $0.language) },
+                                   showGlosses: state.showGlosses)
+    }
+    private func numbers(_ g: [GlossGroup]) -> [Int] { glossStyle ? g.map(\.number) : state.parallelRows.map(\.number) }
+
     var body: some View {
+        let gs = glossStyle ? groups() : []
+        let nums = numbers(gs)
+        let flat = gs.flatMap(\.blocks)
         VStack(spacing: 0) {
-            ColumnHeaders(stacked: stacked)
+            if !glossStyle { ColumnHeaders() }
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -78,15 +95,27 @@ private struct ParallelContent: View {
                             .font(theme.chapterTitleFont)
                             .foregroundStyle(theme.palette.textPrimary)
                             .accessibilityAddTraits(.isHeader)
-                            .padding(.bottom, theme.pt * 0.6)
+                            .padding(.bottom, theme.pt * (glossStyle ? 0.8 : 0.6))
                             .id(-1)
-                        ForEach(state.parallelRows) { row in
-                            ParallelRowView(row: row, stacked: stacked).id(row.number)
+                        if state.glossMode && state.glossSet.effective(primary: state.translationId).isEmpty {
+                            GlossPrompt()
+                        }
+                        if glossStyle {
+                            ForEach(gs) { g in
+                                GlossGroupView(group: g, allBlocks: flat)
+                                    .id(g.number)
+                            }
+                        } else {
+                            ForEach(state.parallelRows) { row in
+                                ParallelRowView(row: row).id(row.number)
+                            }
                         }
                     }
                     .scrollTargetLayout()
+                    .frame(maxWidth: glossStyle ? 760 : .infinity, alignment: .leading)
                     .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, glossStyle ? 28 : 20)
+                    .frame(maxWidth: .infinity)
                 }
                 .scrollPosition(id: $topID, anchor: .top)
                 .focusable()
@@ -103,7 +132,7 @@ private struct ParallelContent: View {
                 .onChange(of: state.actionBarVerse) { _, _ in if state.actionBarVisible { reveal(proxy) } }
                 .onChange(of: topID) { _, new in
                     guard tracking, let new else { return }
-                    state.scrolled(toVerse: new < 0 ? (state.parallelRows.first?.number ?? 1) : new)
+                    state.scrolled(toVerse: new < 0 ? (nums.first ?? 1) : new)
                 }
             }
         }
@@ -114,7 +143,7 @@ private struct ParallelContent: View {
         let verse = state.actionBarVerse
         tracking = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            if state.parallelRows.contains(where: { $0.number == verse }) { proxy.scrollTo(verse) }
+            if numbers(glossStyle ? groups() : []).contains(verse) { proxy.scrollTo(verse) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { tracking = true }
         }
     }
@@ -122,9 +151,9 @@ private struct ParallelContent: View {
     private func scroll(_ proxy: ScrollViewProxy, to verse: Int) {
         tracking = false
         DispatchQueue.main.async {
-            let rows = state.parallelRows
-            let target = rows.first { $0.number >= verse }?.number
-            let id = (target == nil || target == rows.first?.number) ? -1 : target!
+            let rows = numbers(glossStyle ? groups() : [])
+            let target = rows.first { $0 >= verse }
+            let id = (target == nil || target == rows.first) ? -1 : target!
             proxy.scrollTo(id, anchor: .top)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { proxy.scrollTo(id, anchor: .top) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { tracking = true }
@@ -132,84 +161,70 @@ private struct ParallelContent: View {
     }
 }
 
-func parallelTint(_ i: Int, _ theme: Theme) -> Color { theme.palette.parallel[i % 3] }
-func parallelAccent(_ i: Int, _ theme: Theme) -> Color {
-    [theme.palette.accent, theme.palette.textMuted, theme.palette.strongUnderline][i % 3]
+/// Color de acento (solo texto) de la versión `i` de la lista de columnas.
+func versionAccent(_ i: Int, _ theme: Theme) -> Color { theme.palette.versionAccent[i % 3] }
+
+func languageName(_ code: String) -> String {
+    switch code { case "zh": "中文"; case "es": "Español"; case "en": "English"; default: code.uppercased() }
 }
 
-/// Cabeceras de columna fijas (fuera del ScrollView). En modo apilado, leyenda de colores.
+/// Cabeceras de columna fijas (fuera del ScrollView): la identidad de la versión vive solo aquí.
 private struct ColumnHeaders: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
-    let stacked: Bool
 
     var body: some View {
         HStack(spacing: ParallelMetrics.columnGap) {
             ForEach(Array(state.parallelColumns.enumerated()), id: \.element.id) { i, t in
                 HStack(spacing: 6) {
                     Text(t.id).font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(versionAccent(i, theme))
                         .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                    if !stacked {
-                        Text(languageName(t.language)).font(.system(size: 11))
-                            .lineLimit(1).truncationMode(.tail)
-                            .foregroundStyle(theme.palette.textSecondary)
-                        Text(t.name).font(.system(size: 11)).lineLimit(1).truncationMode(.tail)
-                            .foregroundStyle(theme.palette.textSecondary)
-                    }
+                    Text(languageName(t.language)).font(.system(size: 11))
+                        .lineLimit(1).truncationMode(.tail)
+                        .foregroundStyle(theme.palette.textSecondary)
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(theme.palette.textPrimary)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .lineLimit(1)
+                .padding(.horizontal, 6).padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(parallelTint(i, theme), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(alignment: .leading) {
-                    Rectangle().fill(parallelAccent(i, theme)).frame(width: 3).clipShape(RoundedRectangle(cornerRadius: 1.5))
-                }
+                .columnSeparator(show: i > 0, theme: theme)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Columna \(t.name), \(languageName(t.language))")
                 .accessibilityAddTraits(.isHeader)
             }
         }
-        .padding(.horizontal, 24).padding(.vertical, 8)
+        .padding(.horizontal, 24).padding(.vertical, 6)
         .background(theme.palette.background)
         .overlay(alignment: .bottom) { Rectangle().fill(theme.palette.border).frame(height: 1) }
     }
 }
 
-func languageName(_ code: String) -> String {
-    switch code { case "zh": "中文"; case "es": "Español"; case "en": "English"; default: code.uppercased() }
+extension View {
+    /// Línea vertical fina en el borde izquierdo (centrada en el hueco entre columnas).
+    func columnSeparator(show: Bool, theme: Theme) -> some View {
+        overlay(alignment: .leading) {
+            if show { Rectangle().fill(theme.palette.border).frame(width: 1).offset(x: -ParallelMetrics.columnGap / 2 - 0.5) }
+        }
+    }
 }
 
 private struct ParallelRowView: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
     let row: ParallelRow
-    let stacked: Bool
 
     var body: some View {
         let selected = state.selectedVerses.contains(row.number)
-        let flash = state.flashVerses.contains(row.number) ? state.flashAlpha : 0
         let cols = state.parallelColumns
-        Group {
-            if stacked {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(Array(row.cells.enumerated()), id: \.offset) { i, cell in
-                        ParallelCellView(cell: cell, index: i, column: cols[safe: i], row: row.number,
-                                         selected: selected, showTag: true, flash: flash)
-                    }
-                }
-            } else {
-                HStack(alignment: .top, spacing: ParallelMetrics.columnGap) {
-                    ForEach(Array(row.cells.enumerated()), id: \.offset) { i, cell in
-                        ParallelCellView(cell: cell, index: i, column: cols[safe: i], row: row.number,
-                                         selected: selected, showTag: false, stretch: true, flash: flash)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: ParallelMetrics.columnGap) {
+            ForEach(Array(row.cells.enumerated()), id: \.offset) { i, cell in
+                ParallelCellView(cell: cell, column: cols[safe: i], row: row.number, selected: selected)
+                    .columnSeparator(show: i > 0, theme: theme)
             }
         }
-        .padding(.top, theme.verseGap + (stacked ? theme.pt * 0.3 : 0))
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, theme.verseGap + theme.pt * 0.25)
+        .overlay(alignment: .bottom) { Rectangle().fill(theme.palette.border.opacity(0.7)).frame(height: 1) }
         .contentShape(Rectangle())
         .onTapGesture {
             let m = NSEvent.modifierFlags
@@ -219,33 +234,24 @@ private struct ParallelRowView: View {
     }
 }
 
+/// Celda de columna: texto sobre el fondo normal; la selección y el resaltado van solo sobre el texto.
 private struct ParallelCellView: View {
     @Environment(\.theme) private var theme
     @Environment(AppSettings.self) private var settings
+    @Environment(AppState.self) private var state
     let cell: ParallelCell
-    let index: Int
     let column: Translation?
     let row: Int
     let selected: Bool
-    let showTag: Bool
-    var stretch = false
-    var flash: Double = 0
-    @Environment(AppState.self) private var state
 
     private var latin: Bool { (column?.language ?? "es") != "zh" }
     private var name: String { column?.name ?? column?.id ?? "" }
-    private var parallelHighlight: TextHighlight {
-        var h = column.map { state.highlight(for: $0.id) } ?? TextHighlight(terms: state.searchTerms)
-        h.flash = []; h.flashAlpha = 0   // la fila ya se destaca por fondo
-        return h
+    private var highlight: TextHighlight {
+        column.map { state.highlight(for: $0.id) } ?? TextHighlight(terms: state.searchTerms, flash: state.flashVerses, flashAlpha: state.flashAlpha)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if showTag, let c = column {
-                Text(c.id).font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(theme.palette.textSecondary).padding(.bottom, 2)
-            }
             switch cell {
             case .verse(let v):
                 if settings.showHeadings {
@@ -257,7 +263,7 @@ private struct ParallelCellView: View {
                     }
                 }
                 Text(VerseText.attributed(verses: [v], theme: theme, latin: latin, selected: selected ? [v.number] : [], links: false,
-                                           hl: parallelHighlight))
+                                           hl: highlight))
                     .lineSpacing(theme.lineSpacing(latin: latin))
                     .tracking(latin ? 0 : theme.pt * 0.02)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -269,31 +275,16 @@ private struct ParallelCellView: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(name). Versículo \(v.label). \(v.text)")
             case .covered(let v):
-                Text("↑ (\(v.label))")
+                Text("\u{2191} (\(v.label))")
                     .font(.system(size: theme.pt * 0.85)).foregroundStyle(theme.palette.textMuted)
                     .accessibilityLabel("\(name). Versículo \(row) incluido en el versículo \(v.label)")
             case .missing:
-                Text("—")
+                Text("\u{2014}")
                     .font(.system(size: theme.pt)).foregroundStyle(theme.palette.textMuted)
                     .accessibilityLabel("Versículo \(row) no existe en \(name)")
             }
         }
-        .padding(.leading, 11).padding(.trailing, 8).padding(.vertical, 6)
-        .frame(maxWidth: .infinity, maxHeight: stretch ? .infinity : nil, alignment: .topLeading)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6).fill(selected ? theme.palette.selection : parallelTint(index, theme))
-                RoundedRectangle(cornerRadius: 6).fill(theme.palette.selection.opacity(flash))
-            }
-        }
-        .overlay(alignment: .leading) {
-            Rectangle().fill(parallelAccent(index, theme)).frame(width: 3)
-                .clipShape(RoundedRectangle(cornerRadius: 1.5))
-        }
-        .overlay {
-            if case .missing = cell {
-                RoundedRectangle(cornerRadius: 6).strokeBorder(theme.palette.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-            }
-        }
+        .padding(.horizontal, 6)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }

@@ -133,12 +133,14 @@ private struct ChapterScroll: View {
     }
 }
 
-private struct BlockView: View {
+struct BlockView: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
     let block: BookBlock
     let prev: BookBlock?
     let perVerse: Bool
+    /// Separación superior fija (modo glosas: aire generoso entre versículos).
+    var gapOverride: CGFloat?
 
     var body: some View {
         let latin = state.isLatin
@@ -174,6 +176,7 @@ private struct BlockView: View {
     }
 
     private var topGap: CGFloat {
+        if let g = gapOverride { return g }
         guard let prev else { return 0 }
         if perVerse { return prev.kind == .heading ? 0 : theme.verseGap }
         switch block.kind {

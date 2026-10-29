@@ -24,10 +24,11 @@ struct VersionManagerView: View {
                 .onMove { state.moveVersions(from: $0, to: $1) }
             }
             .listStyle(.inset)
-            .frame(minHeight: 260)
+            .frame(minHeight: 200)
+            GlossSection()
         }
         .padding(20)
-        .frame(width: 600, height: 520)
+        .frame(width: 600, height: 620)
         .background(theme.palette.background)
     }
 
@@ -116,5 +117,31 @@ struct VersionRow: View {
             .foregroundStyle(filled ? theme.palette.onAccent : theme.palette.textSecondary)
             .background(filled ? theme.palette.accent : theme.palette.surface, in: Capsule())
             .overlay(Capsule().stroke(filled ? Color.clear : theme.palette.border))
+    }
+}
+
+/// Glosas del modo intercalado: por idioma, máx. 3, sin la principal (se guardan aparte de las columnas).
+struct GlossSection: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Glosas del modo intercalado").font(.headline)
+            Text("Versiones que aparecen en letra pequeña bajo cada versículo de la principal (máx. \(GlossSet.maxGlosses)).")
+                .font(.callout).foregroundStyle(.secondary)
+            ForEach(GlossSet.grouped(state.translations, primary: state.translationId), id: \.language) { group in
+                HStack(spacing: 10) {
+                    Text(languageName(group.language)).font(.callout).foregroundStyle(.secondary)
+                        .frame(width: 64, alignment: .leading)
+                    ForEach(group.items) { t in
+                        Toggle(t.id, isOn: Binding(get: { state.glossSet.contains(t.id) }, set: { _ in state.toggleGloss(t.id) }))
+                            .toggleStyle(.checkbox)
+                            .disabled(!state.glossSet.canAdd(t.id, primary: state.translationId))
+                            .help(t.name)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
     }
 }

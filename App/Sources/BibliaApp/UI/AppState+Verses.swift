@@ -65,7 +65,10 @@ extension AppState {
     func copySelectionPlain(scope: Set<Int>? = nil) {
         let sel = scope ?? selectedVerses
         let text: String?
-        if parallelOn {
+        if glossMode {
+            let cols = glossColumns.map { ($0.id, $0.language) }
+            text = PlainCopy.text(rows: glossRows, selected: sel, columns: showGlosses ? cols : Array(cols.prefix(1)))
+        } else if parallelOn {
             text = PlainCopy.text(rows: parallelRows, selected: sel, columns: parallelColumns.map { ($0.id, $0.language) })
         } else {
             let vs = items.filter { sel.contains($0.number) }

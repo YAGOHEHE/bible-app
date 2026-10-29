@@ -58,6 +58,12 @@ final class AppState {
     var versionSet = VersionSet(order: [], enabled: [])
     var parallelColumns: [Translation] = []
     var parallelRows: [ParallelRow] = []
+    // Modo intercalado «Principal + glosas»
+    var glossSet = GlossSet()
+    var showGlosses = true
+    /// [principal] + glosas efectivas, y sus filas alineadas.
+    var glossColumns: [Translation] = []
+    var glossRows: [ParallelRow] = []
     var showVersions = false
     // Strong (S06) e historial (S07)
     var strongMode = false
@@ -162,6 +168,8 @@ final class AppState {
         parallelOn = defaults.bool(forKey: "par.on")
         parallelLayout = ParallelLayout(rawValue: defaults.string(forKey: "par.layout") ?? "") ?? .columns
         versionSet = VersionSet.load(from: defaults, installed: translations.map(\.id), primary: translationId)
+        glossSet = GlossSet.load(from: defaults)
+        showGlosses = GlossSet.loadVisible(from: defaults)
         try loadBookNames()
         load = .ready
         reloadChapter(scrollTo: anchorVerse)
@@ -210,7 +218,8 @@ final class AppState {
     }
 
     private func loadParallel(_ repo: VerseRepository) throws {
-        guard parallelOn else { parallelColumns = []; parallelRows = []; return }
+        guard parallelOn else { parallelColumns = []; parallelRows = []; glossColumns = []; glossRows = []; return }
+        try loadGlosses(repo)
         let cols = versionSet.columns(primary: translationId).compactMap { id in translations.first { $0.id == id } }
         parallelColumns = cols
         guard cols.count >= 2 else { parallelRows = []; return }
@@ -224,6 +233,22 @@ final class AppState {
                                                                   translationId: t.id))
         }
         parallelRows = ParallelBuilder.build(book: book, chapter: chapter, columns: data)
+    }
+
+    private func loadGlosses(_ repo: VerseRepository) throws {
+        let ids = [translationId] + glossSet.effective(primary: translationId, installed: translations.map(\.id))
+        let cols = ids.compactMap { id in translations.first { $0.id == id } }
+        glossColumns = cols
+        let refMax = try repo.maxVerse(translationId: "KJV", book: book, chapter: chapter)
+        let data: [ParallelColumnData] = try cols.map { t in
+            let vs = try repo.chapter(translationId: t.id, book: book, chapter: chapter)
+            let hs = try repo.headings(translationId: t.id, book: book, chapter: chapter)
+            return ParallelColumnData(translationId: t.id, language: t.language,
+                                      items: ChapterBuilder.build(verses: vs, headings: hs,
+                                                                  referenceMax: t.id == "KJV" ? nil : refMax,
+                                                                  translationId: t.id))
+        }
+        glossRows = ParallelBuilder.build(book: book, chapter: chapter, columns: data)
     }
 
     // MARK: Strong (S06)
@@ -341,6 +366,30 @@ final class AppState {
         defaults.set(l.rawValue, forKey: "par.layout")
     }
 
+    /// ¿El modo activo es «Principal + glosas»?
+    var glossMode: Bool { parallelOn && parallelLayout == .interleaved }
+
+    func setGlosses(_ ids: [String]) {
+        glossSet = GlossSet(ids: ids)
+        glossesChanged()
+    }
+
+    func toggleGloss(_ id: String) {
+        guard glossSet.toggle(id, primary: translationId) else { return }
+        glossesChanged()
+    }
+
+    func setShowGlosses(_ on: Bool) {
+        showGlosses = on
+        GlossSet.saveVisible(on, to: defaults)
+    }
+    func toggleShowGlosses() { setShowGlosses(!showGlosses) }
+
+    private func glossesChanged() {
+        glossSet.save(to: defaults)
+        if parallelOn, let repo = verseRepo { try? loadGlosses(repo) }
+    }
+
     private func versionsChanged() {
         versionSet.save(to: defaults)
         if parallelOn { reloadChapter(scrollTo: anchorVerse) } else { parallelColumns = [] }
@@ -371,7 +420,7 @@ final class AppState {
     }
 
     var activeVersionCount: Int { versionSet.enabledCount(primary: translationId) }
-    var parallelNumbers: [Int] { parallelRows.map(\.number) }
+    var parallelNumbers: [Int] { (glossMode ? glossRows : parallelRows).map(\.number) }
 
     private func touchRecent() {
         recentBooks = ResumeState.pushRecent(book, into: recentBooks)
@@ -530,6 +579,11 @@ final class AppState {
     var canCopyReference: Bool { !selectedVerses.isEmpty }
 
     func referenceText() -> String? {
+        if glossMode {
+            return GlossBuilder.copyText(rows: glossRows, selected: selectedVerses, book: book, chapter: chapter,
+                                         columns: glossColumns.map { ($0.id, $0.language) }, showGlosses: showGlosses,
+                                         bookName: { self.bookName($0, language: $1) })
+        }
         if parallelOn {
             return ParallelCopy.format(rows: parallelRows, selected: selectedVerses, book: book, chapter: chapter,
                                        columns: parallelColumns.map { ($0.id, $0.language) },

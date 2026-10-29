@@ -32,7 +32,9 @@ struct RootView: View {
                     }
             }
             .navigationTitle("\(state.bookName(state.book)) \(state.chapter)")
-            .navigationSubtitle(state.parallelOn && state.parallelColumns.count > 1
+            .navigationSubtitle(state.glossMode
+                                ? ([state.translationId] + state.glossSet.effective(primary: state.translationId)).joined(separator: " · ")
+                                : state.parallelOn && state.parallelColumns.count > 1
                                 ? state.parallelColumns.map(\.id).joined(separator: " · ")
                                 : (state.currentTranslation?.name ?? state.translationId))
             .frame(minWidth: 800, minHeight: 500)
@@ -86,6 +88,7 @@ struct ReaderToolbar: ToolbarContent {
                     ForEach(ParallelLayout.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.menu).help("Columnas o intercalado")
+                if state.parallelLayout == .interleaved { GlossMenu() }
             }
             Button { state.toggleStrongMode() } label: {
                 Image(systemName: "textformat.abc.dottedunderline")

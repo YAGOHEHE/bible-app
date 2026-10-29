@@ -25,7 +25,8 @@ struct ThemePalette {
     let background, surface, textPrimary, textSecondary, textMuted: Color
     let accent, onAccent, verseNumber, heading, strongUnderline: Color
     let searchHighlight, selection, border, borderInput, focusRing, danger: Color
-    let parallel: [Color]
+    /// Color de acento por versión (solo como color de texto: sigla/cabecera; contraste >= 4,5:1 sobre `background`).
+    let versionAccent: [Color]
     /// Fondos de resaltado (bajo el texto) y su mezcla con `selection` cuando el versículo está seleccionado.
     let highlight: [HighlightColor: Color]
     let highlightSelected: [HighlightColor: Color]
@@ -53,7 +54,7 @@ struct ThemePalette {
         searchHighlight: .hex(0xFFE17A), selection: .hex(0xC9DAFF),
         border: .hex(0xD8D8DE), borderInput: .hex(0x85858F), focusRing: .hex(0x3447A0),
         danger: .hex(0xB3261E),
-        parallel: [.hex(0xE8F0FC), .hex(0xE9F5EB), .hex(0xFBEFE2)],
+        versionAccent: [.hex(0x3447A0), .hex(0x1F6B45), .hex(0x9A4B00)],
         highlight: highlights([0xFFF3B0, 0xCDEFC8, 0xB8E6F2, 0xFFD3E2, 0xFFDDB8], selection: 0xC9DAFF).0,
         highlightSelected: highlights([0xFFF3B0, 0xCDEFC8, 0xB8E6F2, 0xFFD3E2, 0xFFDDB8], selection: 0xC9DAFF).1,
         bookmarkMarker: .hex(0xB5441F))
@@ -66,7 +67,7 @@ struct ThemePalette {
         searchHighlight: .hex(0x6E5A0B), selection: .hex(0x2F4A80),
         border: .hex(0x3D3D42), borderInput: .hex(0x7C7C86), focusRing: .hex(0x9DB0FF),
         danger: .hex(0xFF8F86),
-        parallel: [.hex(0x243350), .hex(0x233A2B), .hex(0x403124)],
+        versionAccent: [.hex(0x9DB0FF), .hex(0x8FD1A5), .hex(0xE0B070)],
         highlight: highlights([0x5A4E12, 0x1F5A33, 0x1C5468, 0x6B2A47, 0x6B3F14], selection: 0x2F4A80).0,
         highlightSelected: highlights([0x5A4E12, 0x1F5A33, 0x1C5468, 0x6B2A47, 0x6B3F14], selection: 0x2F4A80).1,
         bookmarkMarker: .hex(0xFF9E6B))
@@ -79,7 +80,7 @@ struct ThemePalette {
         searchHighlight: .hex(0xEFCB62), selection: .hex(0xDCC48E),
         border: .hex(0xD2C4A2), borderInput: .hex(0x85704F), focusRing: .hex(0x8A3B1E),
         danger: .hex(0xA3271B),
-        parallel: [.hex(0xE4E8CF), .hex(0xEBDACB), .hex(0xDCE2DA)],
+        versionAccent: [.hex(0x8A3B1E), .hex(0x3F6B3A), .hex(0x6A5A00)],
         highlight: highlights([0xF5E39A, 0xCFE0A8, 0xB5D5D3, 0xEBC3C0, 0xEBC08A], selection: 0xDCC48E).0,
         highlightSelected: highlights([0xF5E39A, 0xCFE0A8, 0xB5D5D3, 0xEBC3C0, 0xEBC08A], selection: 0xDCC48E).1,
         bookmarkMarker: .hex(0xA3401C))

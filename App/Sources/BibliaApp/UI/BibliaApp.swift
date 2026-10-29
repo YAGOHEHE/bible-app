@@ -64,7 +64,10 @@ extension BibliaApp {
         applyNoteArguments(d)
         // Ganchos solo para pruebas manuales (replica/test-plan.md).
         if d.object(forKey: "startParallel") != nil { state.setParallel(d.bool(forKey: "startParallel")) }
-        if d.string(forKey: "startParallelLayout") == "interleaved" { state.setParallelLayout(.interleaved) }
+        if let l = d.string(forKey: "startParallelLayout").flatMap(ParallelLayout.init(rawValue:)) { state.setParallelLayout(l) }
+        if let g = d.string(forKey: "glosses") {
+            state.setGlosses(g.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+        }
         if d.bool(forKey: "showVersions") { state.showVersions = true }
         if d.double(forKey: "windowWidth") > 0, let w = NSApp.windows.first {
             w.setContentSize(NSSize(width: d.double(forKey: "windowWidth"), height: d.double(forKey: "windowHeight") > 0 ? d.double(forKey: "windowHeight") : 700))
@@ -191,6 +194,8 @@ struct ReaderCommands: Commands {
             Divider()
             Button(state.parallelOn ? "Desactivar vista paralela" : "Vista paralela") { state.toggleParallel() }
                 .keyboardShortcut("\\", modifiers: .command)
+            Button(state.showGlosses ? "Ocultar glosas" : "Mostrar glosas") { state.toggleShowGlosses() }
+                .keyboardShortcut("g", modifiers: [.command, .option]).disabled(!state.glossMode)
             Button("Versiones…") { state.showVersions = true }
                 .keyboardShortcut("v", modifiers: [.command, .option])
             Divider()

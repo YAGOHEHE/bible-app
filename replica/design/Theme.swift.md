@@ -11,7 +11,7 @@ struct ThemePalette {
     let background, surface, textPrimary, textSecondary, textMuted: Color
     let accent, onAccent, verseNumber, heading, strongUnderline: Color
     let searchHighlight, selection, border, borderInput, focusRing, danger: Color
-    let parallel: [Color]            // [p1, p2, p3]
+    let versionAccent: [Color]       // [v1, v2, v3] solo color de texto
 
     static let light = ThemePalette(
         background: .hex(0xFFFFFF), surface: .hex(0xF5F5F7),
@@ -21,7 +21,7 @@ struct ThemePalette {
         searchHighlight: .hex(0xFFE17A), selection: .hex(0xC9DAFF),
         border: .hex(0xD8D8DE), borderInput: .hex(0x85858F), focusRing: .hex(0x3447A0),
         danger: .hex(0xB3261E),
-        parallel: [.hex(0xE8F0FC), .hex(0xE9F5EB), .hex(0xFBEFE2)])
+        versionAccent: [.hex(0x3447A0), .hex(0x1F6B45), .hex(0x9A4B00)])
     static let dark = ThemePalette( /* valores de tokens.color.dark */ )
     static let sepia = ThemePalette( /* valores de tokens.color.sepia */ )
 }
@@ -90,6 +90,6 @@ struct ThemedRoot<Content: View>: ViewModifier {
 5. Tamaños: todo el lector multiplica por `theme.fontScale`; **no** usar `.dynamicTypeSize` en el lector. Al cambiar `fontScale` conservar el versículo ancla (`ScrollViewReader`, `scrollTo(anchor: .top)`).
 6. Subrayado Strong: `AttributedString` con `underlineStyle = .init(pattern: .dot, styleType: .single)` y `underlineColor = strongUnderline`, solo si modo Strong; hover con `onHover` + cambio a `.single`.
 7. Búsqueda: aplicar `backgroundColor = searchHighlight` y `foregroundColor = textPrimary` en el rango.
-8. Paralela: `theme.palette.parallel[index % 3]` como fondo de columna.
+8. Paralela: `theme.palette.versionAccent[index % 3]` como color de texto de la sigla de la versión (sin fondos).
 9. Animaciones: usar `withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2))` con `@Environment(\.accessibilityReduceMotion)`.
 10. Tras cualquier cambio de paleta, correr `python3 contrast.py replica/design/tokens.json`; debe salir con código 0.

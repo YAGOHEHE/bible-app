@@ -132,3 +132,152 @@ struct VersionSet: Equatable {
         return s
     }
 }
+
+// MARK: - Glosas («Principal + glosas»)
+
+/// Versiones elegidas como glosas del modo intercalado: máx. 3, sin la principal, en orden de elección.
+/// Persistente aparte del conjunto de columnas (`par.glosses`).
+struct GlossSet: Equatable {
+    static let maxGlosses = 3
+    var ids: [String] = []
+
+    /// Glosas efectivas: sin la principal, sin duplicados, solo instaladas, máx. 3.
+    func effective(primary: String, installed: [String]? = nil) -> [String] {
+        var seen = Set<String>(); var out: [String] = []
+        for id in ids where id != primary && (installed?.contains(id) ?? true) && seen.insert(id).inserted { out.append(id) }
+        return Array(out.prefix(Self.maxGlosses))
+    }
+
+    func contains(_ id: String) -> Bool { ids.contains(id) }
+
+    /// Marca/desmarca. Devuelve false si no cabe (ya hay 3) o es la principal.
+    @discardableResult
+    mutating func toggle(_ id: String, primary: String) -> Bool {
+        guard id != primary else { return false }
+        if let i = ids.firstIndex(of: id) { ids.remove(at: i); return true }
+        guard effective(primary: primary).count < Self.maxGlosses else { return false }
+        ids.append(id)
+        return true
+    }
+
+    func canAdd(_ id: String, primary: String) -> Bool {
+        id != primary && (contains(id) || effective(primary: primary).count < Self.maxGlosses)
+    }
+
+    /// Versiones candidatas (sin la principal) agrupadas por idioma en el orden 中文 / Español / English.
+    static func grouped(_ translations: [Translation], primary: String) -> [(language: String, items: [Translation])] {
+        let rank = ["zh": 0, "es": 1, "en": 2]
+        let langs = Set(translations.map(\.language)).sorted { (rank[$0] ?? 9, $0) < (rank[$1] ?? 9, $1) }
+        return langs.compactMap { l in
+            let items = translations.filter { $0.language == l && $0.id != primary }
+            return items.isEmpty ? nil : (l, items)
+        }
+    }
+
+    private static let key = "par.glosses", onKey = "par.glossesOn"
+    func save(to d: UserDefaults = .standard) { d.set(ids, forKey: Self.key) }
+    static func load(from d: UserDefaults = .standard) -> GlossSet { GlossSet(ids: d.stringArray(forKey: key) ?? []) }
+    static func loadVisible(from d: UserDefaults = .standard) -> Bool {
+        d.object(forKey: onKey) == nil ? true : d.bool(forKey: onKey)
+    }
+    static func saveVisible(_ v: Bool, to d: UserDefaults = .standard) { d.set(v, forKey: onKey) }
+}
+
+/// Una línea de glosa bajo un versículo.
+struct GlossLine: Equatable, Identifiable {
+    enum Content: Equatable { case text(DisplayVerse), merged(String) }
+    let versionIndex: Int          // posición de la versión en la lista (0 = principal)
+    let translationId: String
+    let language: String
+    let content: Content
+    var id: String { translationId }
+}
+
+/// Un versículo en el modo glosas: bloques de la principal (títulos, poesía…) + líneas de glosa.
+struct GlossGroup: Identifiable, Equatable {
+    let number: Int
+    var blocks: [BookBlock]
+    var glosses: [GlossLine]
+    /// La principal no tiene este versículo (omitido): se muestra un hueco atenuado.
+    var primaryMissing: Bool
+    /// El versículo está cubierto por un rango fusionado de la principal (sus glosas siguen al bloque).
+    var primaryCovered: Bool
+    var id: Int { number }
+}
+
+enum GlossBuilder {
+    /// Reparte los bloques de la principal por versículo (un bloque por versículo; las líneas de poesía se
+    /// conservan) y añade bajo cada uno las glosas presentes. `columns` = [principal] + glosas, igual que `rows.cells`.
+    static func groups(rows: [ParallelRow], blocks: [BookBlock], columns: [(id: String, language: String)],
+                       showGlosses: Bool = true) -> [GlossGroup] {
+        var perRow: [Int: [BookBlock]] = [:]
+        var counter = 0
+        func put(_ b: BookBlock, _ verse: Int) {
+            let nb = BookBlock(id: counter, kind: b.kind, level: b.level, headingKind: b.headingKind, flush: b.flush,
+                               pieces: b.pieces, anchorVerse: b.anchorVerse)
+            counter += 1
+            let key = rows.contains(where: { $0.number == verse }) ? verse
+                : (rows.last { $0.number <= verse }?.number ?? rows.first?.number ?? verse)
+            perRow[key, default: []].append(nb)
+        }
+        for b in blocks {
+            switch b.kind {
+            case .blank: continue
+            case .heading: put(b, b.pieces.first?.verse ?? b.anchorVerse)
+            default:
+                // trocear por versículo consecutivo
+                var run: [Piece] = []
+                func flush() {
+                    guard let f = run.first else { return }
+                    put(BookBlock(id: 0, kind: b.kind, level: b.level, headingKind: b.headingKind, flush: b.flush || run.count < b.pieces.count,
+                                  pieces: run, anchorVerse: f.verse), f.verse)
+                    run = []
+                }
+                for p in b.pieces {
+                    if let l = run.last, l.verse != p.verse { flush() }
+                    run.append(p)
+                }
+                flush()
+            }
+        }
+        var out: [GlossGroup] = []
+        for row in rows {
+            var lines: [GlossLine] = []
+            if showGlosses {
+                for (i, cell) in row.cells.enumerated() where i > 0 {
+                    guard let col = columns[safe: i] else { continue }
+                    switch cell {
+                    case .verse(let v): lines.append(GlossLine(versionIndex: i, translationId: col.id, language: col.language, content: .text(v)))
+                    case .covered(let v): lines.append(GlossLine(versionIndex: i, translationId: col.id, language: col.language, content: .merged(v.label)))
+                    case .missing: break
+                    }
+                }
+            }
+            let cell0 = row.cells.first
+            let missing = cell0 == .missing
+            var covered = false
+            if case .covered? = cell0 { covered = true }
+            let bl = perRow[row.number] ?? []
+            if bl.isEmpty && lines.isEmpty { continue }
+            out.append(GlossGroup(number: row.number, blocks: bl, glosses: lines, primaryMissing: missing && bl.isEmpty, primaryCovered: covered))
+        }
+        // ids consecutivos en orden de lectura (el bloque anterior = id - 1)
+        var n = 0
+        for gi in out.indices {
+            out[gi].blocks = out[gi].blocks.map { b in
+                defer { n += 1 }
+                return BookBlock(id: n, kind: b.kind, level: b.level, headingKind: b.headingKind, flush: b.flush,
+                                 pieces: b.pieces, anchorVerse: b.anchorVerse)
+            }
+        }
+        return out
+    }
+
+    /// Copia en modo glosas: la principal + las glosas visibles (una línea por versión).
+    static func copyText(rows: [ParallelRow], selected: Set<Int>, book: Int, chapter: Int,
+                         columns: [(id: String, language: String)], showGlosses: Bool,
+                         bookName: (Int, String) -> String) -> String? {
+        ParallelCopy.format(rows: rows, selected: selected, book: book, chapter: chapter,
+                            columns: showGlosses ? columns : Array(columns.prefix(1)), bookName: bookName)
+    }
+}
