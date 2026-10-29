@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var main: MainWindowController?
     var prefs: PreferencesWindowController?
     var versions: VersionsWindowController?
+    var history: HistoryWindowController?
     private var themeItems: [ThemeChoice: NSMenuItem] = [:]
     private var layoutItems: [VerseLayout: NSMenuItem] = [:]
     private var headingsItem: NSMenuItem?
@@ -32,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         main = wc
         wc.onOpenVersions = { [weak self] in self?.showVersions(nil) }
         wc.reader.onOpenVersions = { [weak self] in self?.showVersions(nil) }
+        wc.onOpenHistory = { [weak self] in self?.showHistory(nil) }
         wc.showWindow(nil)
         wc.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -52,6 +54,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if versions == nil { versions = VersionsWindowController(model: model) }
         versions?.show()
     }
+    @objc func showHistory(_ sender: Any?) {
+        if history == nil {
+            let h = HistoryWindowController(model: model, settings: settings)
+            h.onNavigate = { [weak self] ref, t in
+                guard let self = self else { return }
+                var translation: String? = t
+                if self.model.parallel.on, self.model.columnIds.contains(t) { translation = nil }
+                _ = self.model.navigate(to: ref, translation: translation, record: false)   // no añade otra fila
+                self.main?.window?.makeKeyAndOrderFront(nil)
+                self.main?.reader.focusReader()
+            }
+            history = h
+        }
+        history?.show()
+    }
+    @objc func findInBible(_ sender: Any?) { main?.window?.makeKeyAndOrderFront(nil); main?.showSearch() }
+    @objc func findNext(_ sender: Any?) { if main?.searchNext(1) != true { NSSound.beep() } }
+    @objc func findPrevious(_ sender: Any?) { if main?.searchNext(-1) != true { NSSound.beep() } }
+    @objc func toggleStrong(_ sender: Any?) { main?.toggleStrong(sender) }
+    @objc func toggleInspector(_ sender: Any?) { main?.toggleInspector(sender) }
+    @objc func showReferences(_ sender: Any?) { main?.showReferences() }
     @objc func toggleParallel(_ sender: Any?) { model.toggleParallel() }
     @objc func pickParallelLayout(_ sender: NSMenuItem) {
         if let l = ParallelLayout(rawValue: sender.representedObject as? String ?? "") { model.setParallelLayout(l); if !model.parallel.on { model.setParallel(on: true) } }
@@ -89,6 +112,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return model.parallel.on && model.parallel.layout == .interleaved
         case #selector(toggleHeadings(_:)):
             item.state = settings.showHeadings ? .on : .off
+        case #selector(toggleStrong(_:)):
+            item.state = settings.strongMode ? .on : .off
+            return main?.strongAvailable ?? false || settings.strongMode
+        case #selector(toggleInspector(_:)):
+            item.state = (main?.inspectorVisible ?? false) ? .on : .off
+        case #selector(findNext(_:)), #selector(findPrevious(_:)):
+            return !(main?.sidebar.searchVC.search.flatHits.isEmpty ?? true)
         default: break
         }
         return true
@@ -138,6 +168,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         _ = add(edit, "Seleccionar todo", #selector(NSText.selectAll(_:)), "a", target: nil)
         edit.addItem(.separator())
         _ = add(edit, "Ir a referencia…", #selector(gotoReference(_:)), "l")
+        edit.addItem(.separator())
+        _ = add(edit, "Buscar en la Biblia…", #selector(findInBible(_:)), "f")
+        _ = add(edit, "Buscar siguiente", #selector(findNext(_:)), "g")
+        _ = add(edit, "Buscar anterior", #selector(findPrevious(_:)), "g", [.command, .shift])
         _ = add(edit, "Filtrar libros", #selector(focusFilter(_:)), "f", [.command, .option])
 
         let view = top("Ver")
@@ -159,7 +193,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let i = add(lm, l.label, #selector(pickLayout(_:))); i.representedObject = l.rawValue; layoutItems[l] = i
         }
         view.addItem(.separator())
-        _ = add(view, "Vista paralela", #selector(toggleParallel(_:)), "\\")
+        // ⌘\\ no se alcanza en teclados como el español (la barra invertida lleva ⌥): ⌥⌘P funciona en cualquier distribución.
+        _ = add(view, "Vista paralela", #selector(toggleParallel(_:)), "p", [.command, .option])
+        _ = add(view, "Vista paralela (⌘\\)", #selector(toggleParallel(_:)), "\\")
         let parRoot = NSMenuItem(title: "Disposición paralela", action: nil, keyEquivalent: ""); view.addItem(parRoot)
         let pm = NSMenu(title: "Disposición paralela"); parRoot.submenu = pm
         for l in ParallelLayout.allCases {
@@ -167,6 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         _ = add(view, "Mostrar glosas", #selector(toggleGlosses(_:)), "g", [.command, .option])
         _ = add(view, "Versiones…", #selector(showVersions(_:)), "v", [.command, .option])
+        view.addItem(.separator())
+        _ = add(view, "Modo Strong", #selector(toggleStrong(_:)), "s", [.command, .option])
+        _ = add(view, "Inspector", #selector(toggleInspector(_:)), "i")
+        _ = add(view, "Referencias del versículo…", #selector(showReferences(_:)), "r", [.command, .option])
+        _ = add(view, "Historial de lectura", #selector(showHistory(_:)), "y")
         view.addItem(.separator())
         headingsItem = add(view, "Mostrar títulos de sección", #selector(toggleHeadings(_:)))
         view.addItem(.separator())

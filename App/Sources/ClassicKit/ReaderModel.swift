@@ -21,11 +21,18 @@ public final class ReaderModel {
     public private(set) var recents: [Int] = []
     public private(set) var parallel = ParallelPrefs()
     private var itemsCache: [String: [DisplayVerse]] = [:]
+    private var spanCache: [String: [Int: [StrongSpan]]] = [:]
+    /// Términos de la búsqueda cuyo resultado se abrió: el lector los resalta en el capítulo mostrado.
+    public private(set) var highlightTerms: [String] = []
+    /// Versión en la que se buscó (el resaltado solo se pinta en sus columnas).
+    public private(set) var highlightTranslation: String?
     /// Versículo superior visible (se persiste).
     public private(set) var anchorVerse = 1
 
     public private(set) var bible: BibleDatabase?
     private var verseRepo: VerseRepository?
+    public var verseRepoForUI: VerseRepository? { verseRepo }
+    public var userStoreForUI: UserStore? { user }
     private var transRepo: TranslationRepository?
     private let user: UserStore?
     private let defaults: UserDefaults
@@ -115,6 +122,7 @@ public final class ReaderModel {
     private func reloadChapter() throws {
         guard let repo = verseRepo else { return }
         itemsCache = [:]
+        spanCache = [:]
         items = try loadItems(translationId)
         itemsCache[translationId] = items
         layout = try repo.layout(translationId: translationId, book: book, chapter: chapter)
@@ -187,6 +195,7 @@ public final class ReaderModel {
 
     private func move(to p: ChapterPosition, kind: String, verse: Int? = nil, flash: ClosedRange<Int>? = nil) {
         guard p != position || verse != nil else { return }
+        clearHighlight()
         book = p.book; chapter = p.chapter
         try? reloadChapter()
         touchRecent()
@@ -218,6 +227,7 @@ public final class ReaderModel {
                 ref.verseTo = min(ref.verseTo ?? a, mx)
             }
             let flash: ClosedRange<Int>? = ref.verseFrom.map { $0...(ref.verseTo ?? $0) }
+            clearHighlight()
             // Misma regla que la app moderna: siempre recarga (puede ser el mismo capítulo).
             book = ref.book; chapter = ref.chapter
             try? reloadChapter()
@@ -230,6 +240,7 @@ public final class ReaderModel {
 
     public func setTranslation(_ id: String) {
         guard id != translationId, translations.contains(where: { $0.id == id }) else { return }
+        clearHighlight()
         let keep = anchorVerse
         translationId = id
         parallel.versions.reconcile(installed: translations.map(\.id), primary: id)
@@ -238,6 +249,63 @@ public final class ReaderModel {
         try? reloadChapter()
         center.post(name: .classicTranslationChanged, object: self)
         announce(scrollTo: keep)
+    }
+
+    private func clearHighlight() { highlightTerms = []; highlightTranslation = nil }
+
+    /// Abre un versículo (resultado de búsqueda, historial, referencia cruzada, aparición Strong…).
+    /// - `translation`: cambia antes a esa versión (nil = la actual). `terms`: resaltado de búsqueda.
+    /// - `record`: añade una fila «Salto» al historial (false al volver desde el propio historial).
+    /// Devuelve false si el libro/capítulo no existe.
+    @discardableResult
+    public func navigate(to ref: BibleRef, translation: String? = nil, terms: [String] = [], record: Bool = true) -> Bool {
+        guard (1...66).contains(ref.book), ref.chapter >= 1, ref.chapter <= max(1, chapterCounts[ref.book - 1]) else { return false }
+        if let t = translation, t != translationId, translations.contains(where: { $0.id == t }) { setTranslation(t) }
+        var ref = ref
+        if let a = ref.verseFrom,
+           let mx = try? verseRepo?.maxVerse(translationId: translationId, book: ref.book, chapter: ref.chapter), mx > 0 {
+            let lo = min(a, mx)
+            ref.verseFrom = lo
+            ref.verseTo = min(max(ref.verseTo ?? a, lo), mx)
+        }
+        let flash: ClosedRange<Int>? = ref.verseFrom.map { $0...max($0, ref.verseTo ?? $0) }
+        highlightTerms = terms
+        highlightTranslation = terms.isEmpty ? nil : (translation ?? translationId)
+        book = ref.book; chapter = ref.chapter
+        try? reloadChapter()
+        touchRecent()
+        if record { try? user?.addHistory(translationId: translationId, ref: ref, kind: "jump") }
+        announce(scrollTo: ref.verseFrom, flash: flash)
+        return true
+    }
+
+    // MARK: Strong / textos
+
+    /// Texto del versículo `verse` (número de fila) de la versión `id` en el capítulo mostrado.
+    public func verseText(_ id: String, verse: Int) -> String? {
+        if itemsCache[id] == nil { itemsCache[id] = (try? loadItems(id)) ?? [] }
+        return itemsCache[id]?.first { $0.number == verse }?.text
+    }
+
+    public func hasStrongs(_ id: String) -> Bool { translations.first { $0.id == id }?.hasStrongs ?? false }
+
+    /// Versiones con Strong que se muestran ahora (la principal y, en columnas, las columnas).
+    public func strongTargets(columns: Bool) -> [String] {
+        let ids = columns ? columnIds : [translationId]
+        return ids.filter(hasStrongs)
+    }
+
+    /// Palabras etiquetadas de la versión `id` en el capítulo actual, por versículo (cacheado por capítulo).
+    public func strongSpans(for id: String) -> [Int: [StrongSpan]] {
+        if let c = spanCache[id] { return c }
+        var out: [Int: [StrongSpan]] = [:]
+        if hasStrongs(id), let repo = verseRepo,
+           let vs = try? repo.chapter(translationId: id, book: book, chapter: chapter),
+           let ws = try? repo.words(translationId: id, book: book, chapter: chapter) {
+            out = StrongAligner.alignChapter(verses: vs, words: ws)
+        }
+        spanCache[id] = out
+        return out
     }
 
     /// El lector informa del versículo superior visible.
@@ -252,4 +320,27 @@ public final class ReaderModel {
         ResumeState.saveRecents(recents, to: defaults)
         center.post(name: .classicRecentsChanged, object: self)
     }
+}
+
+// MARK: - Datos para inspector / historial
+
+public extension ReaderModel {
+    /// Texto del destino de una referencia cruzada en la versión actual (nil = no existe en esta versión).
+    func text(of ref: BibleRef) -> String? {
+        guard let repo = verseRepoForUI, let a = ref.verseFrom else { return nil }
+        let vs = (try? repo.verses(translationId: translationId, book: ref.book, chapter: ref.chapter, from: a, to: ref.verseTo ?? a)) ?? []
+        return CrossRefList.join(vs.sorted { $0.verse < $1.verse }.map(\.text), language: language)
+    }
+
+    func historyEntries(limit: Int = 200) -> [HistoryEntry] { (try? userStoreForUI?.recentHistory(limit: limit)) ?? [] }
+    func clearHistory() { try? userStoreForUI?.clearHistory() }
+
+    /// Nombre del libro en el idioma de la versión `id` (para el historial, que mezcla versiones).
+    func bookName(_ n: Int, translation id: String) -> String {
+        bookName(n, language: BookNameLanguage.forTranslation(id: id, language: language(of: id)))
+    }
+}
+
+public extension ReaderModel {
+    func isLatinTranslation(_ id: String) -> Bool { language(of: id) != "zh" }
 }

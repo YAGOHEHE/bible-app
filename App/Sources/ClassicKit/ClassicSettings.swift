@@ -47,6 +47,8 @@ public final class ClassicSettings {
     public var theme: ThemeChoice { didSet { save(theme.rawValue, "set.theme") } }
     public var layout: VerseLayout { didSet { save(layout.rawValue, "set.layout") } }
     public var showHeadings: Bool { didSet { save(showHeadings, "set.headings") } }
+    /// Modo Strong (⌥⌘S): subraya con puntos las palabras etiquetadas de las versiones con Strong.
+    public var strongMode: Bool { didSet { save(strongMode, "set.strongMode") } }
 
     public init(defaults: UserDefaults = .standard, center: NotificationCenter = .default) {
         self.defaults = defaults
@@ -56,6 +58,7 @@ public final class ClassicSettings {
         theme = ThemeChoice(rawValue: defaults.string(forKey: "set.theme") ?? "") ?? .system
         layout = VerseLayout(rawValue: defaults.string(forKey: "set.layout") ?? "") ?? .paragraph
         showHeadings = defaults.object(forKey: "set.headings") as? Bool ?? true
+        strongMode = defaults.object(forKey: "set.strongMode") as? Bool ?? false
     }
 
     private func save(_ v: Any, _ key: String) {

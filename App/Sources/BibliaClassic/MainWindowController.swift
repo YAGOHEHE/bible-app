@@ -12,6 +12,9 @@ private extension NSToolbarItem.Identifier {
     static let glosses = NSToolbarItem.Identifier("glosses")
     static let fontSmaller = NSToolbarItem.Identifier("fontSmaller")
     static let fontLarger = NSToolbarItem.Identifier("fontLarger")
+    static let strong = NSToolbarItem.Identifier("strong")
+    static let history = NSToolbarItem.Identifier("history")
+    static let inspector = NSToolbarItem.Identifier("inspector")
 }
 
 /// Ventana principal: NSSplitViewController (barra lateral | lector) + NSToolbar.
@@ -20,6 +23,13 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     let settings: ClassicSettings
     let reader: ReaderViewController
     let sidebar: SidebarViewController
+    let inspector: InspectorViewController
+    private var inspectorItem: NSSplitViewItem!
+    private var sidebarItem: NSSplitViewItem!
+    private let strongButton = NSButton()
+    private let inspectorButton = NSButton()
+    private let historyButton = NSButton()
+    var onOpenHistory: (() -> Void)?
     private let split = NSSplitViewController()
     private let prevButton = NSButton()
     private let nextButton = NSButton()
@@ -36,16 +46,26 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         self.model = model; self.settings = settings
         reader = ReaderViewController(model: model, settings: settings)
         sidebar = SidebarViewController(model: model, settings: settings)
+        inspector = InspectorViewController(model: model, settings: settings)
 
         let side = NSSplitViewItem(viewController: sidebar)
         side.minimumThickness = 200
-        side.maximumThickness = 320
+        side.maximumThickness = 520
         side.holdingPriority = NSLayoutConstraint.Priority(260)
         side.canCollapse = true
         let content = NSSplitViewItem(viewController: reader)
         content.minimumThickness = 360
+        let insp = NSSplitViewItem(viewController: inspector)
+        insp.minimumThickness = 260
+        insp.maximumThickness = 440
+        insp.holdingPriority = NSLayoutConstraint.Priority(250)
+        insp.canCollapse = true
+        insp.isCollapsed = true
+        sidebarItem = side
+        inspectorItem = insp
         split.addSplitViewItem(side)
         split.addSplitViewItem(content)
+        split.addSplitViewItem(insp)
         split.splitView.dividerStyle = .thin
         split.splitView.autosaveName = NSSplitView.AutosaveName("MainSplit")
 
@@ -72,6 +92,16 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         nc.addObserver(self, selector: #selector(parallelChromeChanged), name: .classicParallelChanged, object: model)
         nc.addObserver(self, selector: #selector(parallelChromeChanged), name: .classicTranslationChanged, object: model)
         nc.addObserver(self, selector: #selector(themeChanged), name: .classicSettingsChanged, object: settings)
+        nc.addObserver(self, selector: #selector(strongChrome), name: .classicSettingsChanged, object: settings)
+        nc.addObserver(self, selector: #selector(strongChrome), name: .classicTranslationChanged, object: model)
+        nc.addObserver(self, selector: #selector(strongChrome), name: .classicParallelChanged, object: model)
+        sidebar.onModeChanged = { [weak self] m in self?.sidebarModeChanged(m) }
+        reader.onStrongClicked = { [weak self] sel, id, word, len in
+            guard let s = self else { return }
+            s.showInspector()
+            s.inspector.showStrong(sel, translationId: id, word: word, length: len)
+        }
+        inspector.onNavigate = { [weak self] ref, t in self?.navigateFromInspector(ref, t) }
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(systemAppearanceChanged),
                                                             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil)
         applyWindowAppearance()
@@ -197,6 +227,93 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         model.setParallelLayout(ParallelLayout.allCases[max(0, sender.indexOfSelectedItem)])
     }
 
+    // MARK: búsqueda / Strong / inspector
+
+    private func sidebarModeChanged(_ m: SidebarViewController.Mode) {
+        guard m == .search else { return }
+        if let it = sidebarItem, it.isCollapsed { it.animator().isCollapsed = false }
+        // El panel de resultados necesita más ancho que la lista de libros.
+        let w = sidebar.view.frame.width
+        if w < 300 { split.splitView.setPosition(340, ofDividerAt: 0) }
+    }
+
+    func showSearch() {
+        if let it = sidebarItem, it.isCollapsed { it.isCollapsed = false }
+        sidebar.showSearch()
+    }
+    func searchNext(_ d: Int) -> Bool { sidebar.searchVC.advance(d) }
+
+    var strongAvailable: Bool { !model.strongTargets(columns: reader.mode == .columns).isEmpty }
+
+    @objc func toggleStrong(_ sender: Any?) {
+        guard strongAvailable || settings.strongMode else {
+            NSSound.beep()
+            reader.showMessage("El modo Strong solo existe en versiones con numeración Strong (KJV).")
+            return
+        }
+        settings.strongMode.toggle()
+    }
+
+    @objc private func strongChrome() {
+        strongButton.state = settings.strongMode ? .on : .off
+        strongButton.isEnabled = strongAvailable
+        strongButton.setAccessibilityValue(settings.strongMode ? "activado" : "desactivado")
+        strongButton.attributedTitle = MainWindowController.strongTitle(on: settings.strongMode, enabled: strongAvailable)
+    }
+
+    static func strongTitle(on: Bool, enabled: Bool) -> NSAttributedString {
+        let c = on ? NSColor.alternateSelectedControlColor : NSColor.labelColor
+        return NSAttributedString(string: "abc", attributes: [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: enabled ? c : NSColor.disabledControlTextColor,
+            .underlineStyle: NSNumber(value: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue),
+            .underlineColor: enabled ? c : NSColor.disabledControlTextColor])
+    }
+
+    @objc func toggleInspector(_ sender: Any?) {
+        if inspectorItem.isCollapsed { showInspector() } else { inspectorItem.animator().isCollapsed = true }
+        inspectorButton.state = inspectorItem.isCollapsed ? .off : .on
+    }
+
+    func showInspector() {
+        guard inspectorItem.isCollapsed, let w = window else { return }
+        // Si la ventana es estrecha, ensancharla para que el lector conserve su ancho mínimo.
+        let side = sidebarItem.isCollapsed ? 0 : sidebar.view.frame.width
+        let need = side + 360 + 300
+        let have = w.contentView?.frame.width ?? 0
+        if have < need, let screen = w.screen {
+            var f = w.frame
+            f.size.width = min(f.width + (need - have), screen.visibleFrame.width)
+            f.origin.x = min(f.origin.x, screen.visibleFrame.maxX - f.width)
+            w.setFrame(f, display: true)
+        }
+        inspectorItem.isCollapsed = false
+        inspectorButton.state = .on
+    }
+
+    var inspectorVisible: Bool { !inspectorItem.isCollapsed }
+
+    /// «Referencias del versículo…»: versículo(s) bajo la selección o el cursor.
+    func showReferences() {
+        let vs = reader.currentVerses()
+        guard !vs.isEmpty else {
+            NSSound.beep()
+            reader.showMessage("Coloca el cursor o selecciona texto en un versículo para ver sus referencias.")
+            return
+        }
+        showInspector()
+        inspector.showRefs(book: model.book, chapter: model.chapter, verses: vs)
+    }
+
+    private func navigateFromInspector(_ ref: BibleRef, _ t: String?) {
+        // Si esa versión ya está en pantalla (columna), no se cambia la principal.
+        var translation = t
+        if let x = t, model.parallel.on, model.columnIds.contains(x) { translation = nil }
+        if !model.navigate(to: ref, translation: translation) { NSSound.beep() }
+    }
+
+    @objc private func openHistory(_ sender: Any?) { onOpenHistory?() }
+
     // MARK: actions
 
     @objc func prevChapter(_ sender: Any?) { model.goPrev() }
@@ -241,13 +358,13 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     // MARK: NSToolbarDelegate
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.prev, .next, .translation, .parallel, .layout, .glosses, .goto, .fontSmaller, .fontLarger, .flexibleSpace, .space]
+        [.prev, .next, .translation, .parallel, .layout, .glosses, .goto, .strong, .history, .inspector, .fontSmaller, .fontLarger, .flexibleSpace, .space]
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         var ids: [NSToolbarItem.Identifier] = [.prev, .next, .translation, .parallel]
         if model.parallel.on { ids.append(.layout) }
         if model.parallel.on && model.parallel.layout == .interleaved { ids.append(.glosses) }
-        return ids + [.flexibleSpace, .goto, .fontSmaller, .fontLarger]
+        return ids + [.flexibleSpace, .goto, .strong, .history, .inspector, .fontSmaller, .fontLarger]
     }
 
     private func configure(_ b: NSButton, image: NSImage?, title: String, action: Selector, size: NSSize) {
@@ -285,7 +402,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             configure(parallelButton, image: ParallelIcon.image(), title: "Vista paralela", action: #selector(parallelToggled(_:)), size: NSSize(width: 36, height: 25))
             parallelButton.setButtonType(.pushOnPushOff)
             parallelButton.alternateImage = ParallelIcon.image(color: NSColor.alternateSelectedControlColor)
-            parallelButton.toolTip = "Vista paralela (⌘\\)"
+            parallelButton.toolTip = "Vista paralela (⌘\\ o ⌥⌘P)"
             item.label = "Paralela"; fit(parallelButton); syncParallelChrome()
         case .layout:
             if layoutPopup.numberOfItems == 0 {
@@ -306,6 +423,21 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             gotoField.setAccessibilityLabel("Ir a referencia")
             gotoField.toolTip = "Ir a referencia: Juan 3:16, 约3:16, 約3:16, John 3:16"
             item.label = "Ir a"; fit(gotoField)
+        case .strong:
+            configure(strongButton, image: nil, title: "Modo Strong", action: #selector(toggleStrong(_:)), size: NSSize(width: 46, height: 25))
+            strongButton.setButtonType(.pushOnPushOff)
+            strongButton.toolTip = "Modo Strong (⌥⌘S)"
+            item.label = "Strong"; fit(strongButton); strongChrome()
+        case .history:
+            configure(historyButton, image: ToolbarIcons.clock(), title: "Historial de lectura", action: #selector(openHistory(_:)), size: NSSize(width: 36, height: 25))
+            historyButton.toolTip = "Historial de lectura (⌘Y)"
+            item.label = "Historial"; fit(historyButton)
+        case .inspector:
+            configure(inspectorButton, image: ToolbarIcons.inspector(), title: "Inspector", action: #selector(toggleInspector(_:)), size: NSSize(width: 36, height: 25))
+            inspectorButton.setButtonType(.pushOnPushOff)
+            inspectorButton.state = inspectorItem.isCollapsed ? .off : .on
+            inspectorButton.toolTip = "Inspector: Strong y referencias (⌘I)"
+            item.label = "Inspector"; fit(inspectorButton)
         case .fontSmaller:
             configure(smaller, image: nil, title: "Reducir tamaño de letra", action: #selector(fontSmaller(_:)), size: NSSize(width: 34, height: 25))
             smaller.attributedTitle = NSAttributedString(string: "A", attributes: [.font: NSFont.systemFont(ofSize: 11)])
@@ -339,6 +471,38 @@ enum ParallelIcon {
             return true
         }
         img.isTemplate = color == nil
+        return img
+    }
+}
+
+/// Iconos de la barra de herramientas dibujados como plantillas (sin SF Symbols, inexistentes en 10.13).
+enum ToolbarIcons {
+    static func inspector() -> NSImage {
+        let img = NSImage(size: NSSize(width: 18, height: 14), flipped: false) { r in
+            NSColor.black.setStroke()
+            let box = NSBezierPath(roundedRect: r.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2)
+            box.lineWidth = 1.3; box.stroke()
+            let bar = NSBezierPath()
+            bar.move(to: NSPoint(x: r.maxX - 6, y: r.minY + 1)); bar.line(to: NSPoint(x: r.maxX - 6, y: r.maxY - 1))
+            bar.lineWidth = 1.3; bar.stroke()
+            NSColor.black.setFill()
+            NSRect(x: r.maxX - 5, y: r.minY + 2, width: 3.5, height: r.height - 4).fill()
+            return true
+        }
+        img.isTemplate = true
+        return img
+    }
+
+    static func clock() -> NSImage {
+        let img = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in
+            NSColor.black.setStroke()
+            let c = NSBezierPath(ovalIn: r.insetBy(dx: 1.5, dy: 1.5)); c.lineWidth = 1.3; c.stroke()
+            let h = NSBezierPath()
+            h.move(to: NSPoint(x: r.midX, y: r.midY + 4)); h.line(to: NSPoint(x: r.midX, y: r.midY)); h.line(to: NSPoint(x: r.midX + 3.2, y: r.midY - 2))
+            h.lineWidth = 1.3; h.lineCapStyle = .round; h.lineJoinStyle = .round; h.stroke()
+            return true
+        }
+        img.isTemplate = true
         return img
     }
 }

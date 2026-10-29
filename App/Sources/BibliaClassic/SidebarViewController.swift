@@ -104,10 +104,17 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private var palette = ReaderPalette.light
     private var suppress = false
     private var gridBook = 0
+    private let modeSegment = NSSegmentedControl(labels: ["Libros", "Buscar"], trackingMode: .selectOne, target: nil, action: nil)
+    let searchVC: SearchViewController
+    enum Mode: Int { case books = 0, search = 1 }
+    private(set) var mode = Mode.books
+    var onModeChanged: ((Mode) -> Void)?
 
     init(model: ReaderModel, settings: ClassicSettings) {
         self.model = model; self.settings = settings
+        searchVC = SearchViewController(model: model, settings: settings)
         super.init(nibName: nil, bundle: nil)
+        addChild(searchVC)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) no se usa") }
 
@@ -153,9 +160,25 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         gridScroll.drawsBackground = false
         gridScroll.translatesAutoresizingMaskIntoConstraints = false
 
-        for v in [filter, outlineScroll, separator, gridTitle, gridScroll] as [NSView] { root.addSubview(v) }
+        modeSegment.segmentStyle = .rounded
+        modeSegment.target = self
+        modeSegment.action = #selector(modePicked(_:))
+        modeSegment.selectedSegment = 0
+        modeSegment.setAccessibilityLabel("Panel de la barra lateral")
+        modeSegment.translatesAutoresizingMaskIntoConstraints = false
+        let sv = searchVC.view
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        sv.isHidden = true
+        for v in [modeSegment, filter, outlineScroll, separator, gridTitle, gridScroll, sv] as [NSView] { root.addSubview(v) }
         NSLayoutConstraint.activate([
-            filter.topAnchor.constraint(equalTo: root.topAnchor, constant: 10),
+            modeSegment.topAnchor.constraint(equalTo: root.topAnchor, constant: 10),
+            modeSegment.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 10),
+            modeSegment.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -10),
+            sv.topAnchor.constraint(equalTo: modeSegment.bottomAnchor, constant: 8),
+            sv.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            sv.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            sv.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            filter.topAnchor.constraint(equalTo: modeSegment.bottomAnchor, constant: 8),
             filter.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 10),
             filter.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -10),
             outlineScroll.topAnchor.constraint(equalTo: filter.bottomAnchor, constant: 8),
@@ -267,7 +290,26 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         if filter.stringValue.isEmpty { rebuild() }
     }
 
-    func focusFilter() { view.window?.makeFirstResponder(filter) }
+    func focusFilter() { setMode(.books); view.window?.makeFirstResponder(filter) }
+
+    @objc private func modePicked(_ s: NSSegmentedControl) { setMode(Mode(rawValue: s.selectedSegment) ?? .books) }
+
+    func setMode(_ m: Mode) {
+        guard m != mode || modeSegment.selectedSegment != m.rawValue else { return }
+        mode = m
+        modeSegment.selectedSegment = m.rawValue
+        let books = m == .books
+        for v in [filter, outlineScroll, separator, gridTitle, gridScroll] as [NSView] { v.isHidden = !books }
+        searchVC.view.isHidden = books
+        onModeChanged?(m)
+    }
+
+    /// ⌘F: muestra el panel «Buscar» y enfoca el campo.
+    func showSearch(prefill: String? = nil) {
+        setMode(.search)
+        if let p = prefill, !p.isEmpty { searchVC.run(p) }
+        searchVC.focusField()
+    }
 
     func controlTextDidChange(_ obj: Notification) { rebuild() }
 

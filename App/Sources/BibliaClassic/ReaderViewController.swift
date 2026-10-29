@@ -109,6 +109,8 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
     private var copyRows: [ParallelRow] = []
     private var copyColumns: [(id: String, language: String)] = []
     var onOpenVersions: (() -> Void)?
+    /// Palabra Strong pulsada: (selección, versión, palabra, longitud).
+    var onStrongClicked: ((StrongSelection, String, String, Int) -> Void)?
 
     init(model: ReaderModel, settings: ClassicSettings) {
         self.model = model; self.settings = settings
@@ -234,7 +236,9 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         colDoc.color = palette.border
         textView.backgroundColor = palette.background
         textView.selectedTextAttributes = [.backgroundColor: palette.selection, .foregroundColor: palette.textPrimary]
-        textView.linkTextAttributes = [.foregroundColor: palette.accent, .underlineStyle: NSUnderlineStyle.single.rawValue, .cursor: NSCursor.pointingHand]
+        // Los enlaces del texto (palabras Strong, «Elegir glosas») llevan su propio color/subrayado.
+        textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
+        for tv in colViews { tv.linkTextAttributes = [.cursor: NSCursor.pointingHand] }
         scrollView.scrollerKnobStyle = palette.isDark ? .light : .default
         messageLabel.textColor = palette.textPrimary
         messageLabel.layer?.backgroundColor = palette.surface.cgColor
@@ -318,6 +322,7 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         }
         built = b
         storage.setAttributedString(b.text)
+        applyOverlays(storage, built: b, id: model.translationId, strong: model.settings.strongMode)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         scrollToVerse(verse ?? 1)
     }
@@ -357,6 +362,7 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
             tv.textContainer?.lineFragmentPadding = 0
             tv.textContainerInset = NSSize(width: 0, height: BuiltColumns.padTop)
             tv.delegate = self
+            tv.linkTextAttributes = [.cursor: NSCursor.pointingHand]
             tv.onPrev = { [weak self] in self?.model.goPrev() }
             tv.onNext = { [weak self] in self?.model.goNext() }
             tv.onZoomIn = { [weak self] in self?.settings.stepFont(1) }
@@ -370,10 +376,52 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
             tv.selectedTextAttributes = [.backgroundColor: palette.selection, .foregroundColor: palette.textPrimary]
             tv.setAccessibilityLabel("\(c.id), \(languageLabel(c.language))")
             tv.textStorage?.setAttributedString(c.text)
+            if let st = tv.textStorage {
+                applyOverlays(st, ranges: c.verseRanges, id: c.id, strong: model.settings.strongMode)
+            }
             tv.setSelectedRange(NSRange(location: 0, length: 0))
         }
         colDoc.needsDisplay = true
         scrollToVerse(verse ?? 1)
+    }
+
+    // MARK: overlays (Strong, resaltado de búsqueda)
+
+    private func applyOverlays(_ storage: NSTextStorage, built b: BuiltChapter, id: String, strong: Bool) {
+        applyOverlays(storage, ranges: b.verseRanges, id: id, strong: strong)
+    }
+
+    private func applyOverlays(_ storage: NSTextStorage, ranges: [Int: NSRange], id: String, strong: Bool) {
+        if strong, model.hasStrongs(id) {
+            ReaderOverlays.applyStrong(to: storage, ranges: ranges, spans: model.strongSpans(for: id),
+                                       verseText: { [model] in model.verseText(id, verse: $0) }, palette: palette)
+        }
+        if !model.highlightTerms.isEmpty, model.highlightTranslation == id {
+            ReaderOverlays.applyHighlight(to: storage, ranges: ranges, terms: model.highlightTerms, palette: palette)
+        }
+    }
+
+    /// Versículos (números de fila) bajo la selección de texto o el cursor; vacío si no hay ninguno.
+    func currentVerses() -> [Int] {
+        switch mode {
+        case .columns:
+            guard let bc = builtCols else { return [] }
+            let sel = colViews.enumerated().map { (column: $0.offset, range: $0.element.selectedRange()) }
+            let rows = bc.rows(intersecting: sel)
+            if !rows.isEmpty { return rows.sorted() }
+            for (i, tv) in colViews.enumerated() where view.window?.firstResponder === tv {
+                let loc = tv.selectedRange().location
+                if let hit = bc.columns[i].verseRanges.first(where: { NSLocationInRange(loc, $0.value) }) { return [hit.key] }
+            }
+            return []
+        default:
+            guard let b = built else { return [] }
+            let r = textView.selectedRange()
+            if r.length > 0 { return b.verses(intersecting: r) }
+            guard b.text.length > 0, r.location < b.text.length else { return [] }
+            if let hit = b.verseRanges.first(where: { NSLocationInRange(r.location, $0.value) }) { return [hit.key] }
+            return []
+        }
     }
 
     // MARK: scrolling / anchor
@@ -517,6 +565,21 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         if "\(link)" == "biblia://glosas" { onOpenVersions?(); return true }
+        let url = (link as? URL) ?? URL(string: "\(link)")
+        if let u = url, let sel = StrongLink.parse(u) {
+            let id: String
+            if let i = colViews.firstIndex(where: { $0 === textView }), let c = builtCols?.columns[safe: i] { id = c.id }
+            else { id = model.translationId }
+            let ns = textView.textStorage?.string as NSString?
+            var word = sel.strong, len = 0
+            if let st = textView.textStorage, charIndex < st.length {
+                var eff = NSRange()
+                if st.attribute(.link, at: charIndex, effectiveRange: &eff) != nil, let t = ns { word = t.substring(with: eff); len = eff.length }
+            }
+            if let sp = model.strongSpans(for: id)[sel.verse]?.first(where: { $0.start == sel.start && $0.strong == sel.strong }) { len = sp.length }
+            onStrongClicked?(sel, id, word, len)
+            return true
+        }
         return false
     }
 
