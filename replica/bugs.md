@@ -68,7 +68,7 @@ Resumen: 0 altas, 0 medias, 3 bajas (1 arreglada) y 4 observaciones. Sin clic ni
 - Pasos: `-startTranslation KJV -startGoto "John 3:16" -selectVerse 16 -showRefs "John 3:16" -windowWidth 800` y, aparte, `set.fontScale 2.0` / `0.8`.
 - Esperado: barra sin ocultar contenido relevante. Actual: la barra (~400 pt de ancho) flota bajo el versículo y tapa 2-3 versículos siguientes (en 200 % y 80 %); a 800 px con inspector abierto la barra invade la lista de referencias (esquina del inspector) y la barra lateral. Se cierra al pulsar fuera o con Esc, y no impide usarla. 
 - Evidencia: `v11-test-narrow-actionbar.png`, `v11-test-font200-annot.png`, `v11-test-font80-annot.png`
-- Estado: Abierto (más de ~30 líneas: requiere colocar la barra con límites del panel de lectura y opción de anclar arriba). Sugerencia para la 1.2.
+- Estado: Arreglado. La barra ya no es un popover: va anclada abajo del panel de lectura (`safeAreaInset` en la columna de detalle, dentro del inspector), así que no tapa versículos ni invade barra lateral o inspector. Una fila con ancho suficiente, dos filas o modo compacto (solo iconos) según `ActionBarLayout.choose(width:)` (test `actionBarLayoutFollowsWidth`); botón ✕ y Esc la cierran; el lector se desplaza para dejar visible el versículo. Capturas: `fix-V11-02-100.png`, `fix-V11-02-200.png` (800 px + inspector), `fix-V11-02-narrow.png`, `fix-V11-02-parallel.png`.
 
 ### BUG-V11-03: CUVT (繁體) muestra nombres de libro en simplificado
 - Severidad: baja
@@ -76,7 +76,7 @@ Resumen: 0 altas, 0 medias, 3 bajas (1 arreglada) y 4 observaciones. Sin clic ni
 - Pasos: `-startTranslation CUVT -startGoto "Psalms 23"`: el texto y los títulos están en caracteres tradicionales, pero la cabecera «诗篇 23», la barra lateral y «Recientes» usan nombres simplificados (约翰福音). El texto bíblico en sí es correcto (`newTextsHaveTheirOwnScriptAndLanguage`).
 - Esperado: 詩篇 / 約翰福音. Actual: nombres de la tabla `book_names` de CUV.
 - Evidencia: `v11-test-F18-cuvt-trad.png`
-- Estado: Abierto (datos: añadir nombres tradicionales a `book_names` para CUVT en `data/build_bibles.py`, más tests; fuera del alcance de un arreglo pequeño). Recomendado antes de repartir a lectores de tradicional.
+- Estado: Arreglado. `book_names` tiene el idioma `zh-Hant` (66 nombres y abreviaturas tradicionales); CUVT lo usa en cabecera, barra lateral, recientes, copia con referencia, Referencias, Notas e historial (`BookNameLanguage.forTranslation`). `ReferenceParser` acepta tradicional y simplificado (約3:16, 約翰福音 3:16, 創1:1). Tests Swift y `data/test_bundle.py`. Captura: `fix-V11-03.png`.
 
 ### Observaciones (sin arreglo necesario)
 - OBS-1: el subtítulo de la barra superior corta los nombres largos («Santa Biblia libre para el mundo (Spanish Free Bible for th…», CUVT, CUV). Solo estético; el nombre completo está en el gestor de versiones.

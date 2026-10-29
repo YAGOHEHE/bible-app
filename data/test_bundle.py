@@ -39,7 +39,27 @@ class BundleTests(unittest.TestCase):
         for (lic,) in self.q("SELECT license FROM translations"):
             self.assertEqual(lic, "Public Domain")
         self.assertEqual(self.q("SELECT has_strongs FROM translations WHERE id='KJV'"), [(1,)])
-        self.assertEqual(self.q("SELECT COUNT(*) FROM book_names"), [(198,)])
+        self.assertEqual(self.q("SELECT COUNT(*) FROM book_names"), [(264,)])
+
+    def test_traditional_book_names(self):
+        rows = self.q("SELECT book,name,abbrev FROM book_names WHERE language='zh-Hant' ORDER BY book")
+        self.assertEqual(len(rows), 66)
+        simp = {r[0]: r for r in self.q("SELECT book,name,abbrev FROM book_names WHERE language='zh'")}
+        got = {r[0]: r for r in rows}
+        self.assertEqual(got[1][1:], ("創世記", "創"))
+        self.assertEqual(got[19][1:], ("詩篇", "詩"))
+        self.assertEqual(got[43][1:], ("約翰福音", "約"))
+        self.assertEqual(got[66][1:], ("啟示錄", "啟"))
+        changed = 0
+        for b, name, ab in rows:
+            self.assertTrue(name and ab, b)
+            self.assertEqual(len(name), len(simp[b][1]), b)
+            changed += name != simp[b][1]
+        self.assertGreater(changed, 40)
+        # no simplified-only characters left in the traditional names
+        for ch in "记书约马启罗对门齐亚诗赛结圣传亚经历": 
+            self.assertFalse(any(ch in r[1] + r[2] for r in rows), ch)
+        self.assertEqual(self.q("SELECT language FROM translations WHERE id='CUVT'"), [("zh",)])
 
     def test_john_3_16(self):
         for t in IDS:

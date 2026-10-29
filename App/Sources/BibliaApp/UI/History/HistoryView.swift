@@ -13,7 +13,7 @@ struct HistoryView: View {
     }
     private func reference(_ e: HistoryEntry) -> String {
         let lang = state.translations.first { $0.id == e.translationId }?.language ?? state.language
-        let name = state.bookName(e.book, language: lang)
+        let name = state.bookName(e.book, language: BookNameLanguage.forTranslation(id: e.translationId, language: lang))
         let sep = lang == "zh" ? "" : " "
         return "\(name)\(sep)\(e.chapter)" + (e.verse.map { ":\($0)" } ?? "")
     }

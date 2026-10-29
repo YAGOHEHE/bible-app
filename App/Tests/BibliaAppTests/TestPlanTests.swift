@@ -112,4 +112,21 @@ import Foundation
         #expect(BookNameLanguage.name(40, language: "zh") == "马太福音")
         #expect(BookNameLanguage.name(40, language: "es") == "Mateo")
     }
+
+    /// BUG-V11-03
+    @Test func cuvtUsesTraditionalBookNames() {
+        #expect(BookNameLanguage.forTranslation(id: "CUVT", language: "zh") == "zh-Hant")
+        #expect(BookNameLanguage.forTranslation(id: "CUV", language: "zh") == "zh")
+        #expect(BookNameLanguage.name(43, language: "zh-Hant") == "約翰福音")
+        #expect(BookNameLanguage.name(66, language: "zh-Hant") == "啟示錄")
+        #expect(ReferenceParser.traditional.count == 66)
+    }
+
+    @Test(.enabled(if: BibleDatabase.bundledPath() != nil, "bible.sqlite no presente"))
+    func traditionalNamesInBundleMatchParser() throws {
+        let db = try BibleDatabase(path: try #require(BibleDatabase.bundledPath()))
+        let names = try TranslationRepository(db: db).bookNames(language: "zh-Hant")
+        #expect(names.count == 66)
+        for n in names { #expect(n.name == ReferenceParser.traditional[n.book - 1].0, "\(n.book)") }
+    }
 }

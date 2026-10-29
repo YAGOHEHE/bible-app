@@ -39,4 +39,18 @@ private func p(_ s: String) throws -> BibleRef { try ReferenceParser.parse(s) }
         #expect(ReferenceParser.books.count == 66)
         for b in ReferenceParser.books { #expect(try ReferenceParser.resolveBook(b.2) == b.0) }
     }
+
+    @Test func traditionalNamesAreAccepted() throws {
+        #expect(try ReferenceParser.parse("約3:16") == BibleRef(book: 43, chapter: 3, verseFrom: 16, verseTo: 16))
+        #expect(try ReferenceParser.parse("約翰福音 3:16").book == 43)
+        #expect(try ReferenceParser.parse("創1:1") == BibleRef(book: 1, chapter: 1, verseFrom: 1, verseTo: 1))
+        #expect(try ReferenceParser.parse("啟示錄 22").book == 66)
+        #expect(try ReferenceParser.parse("詩篇 23").book == 19)
+        #expect(try ReferenceParser.parse("約壹 4:8").book == 62)
+        #expect(try ReferenceParser.parse("约3:16").book == 43)
+        for (i, t) in ReferenceParser.traditional.enumerated() {
+            #expect(try ReferenceParser.resolveBook(t.0) == i + 1, "\(t.0)")
+            #expect(try ReferenceParser.resolveBook(t.1) == i + 1, "\(t.1)")
+        }
+    }
 }

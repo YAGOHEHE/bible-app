@@ -129,3 +129,34 @@ enum NoteLink {
         return Int64(h)
     }
 }
+
+/// Disposición de la barra de acciones anclada abajo del panel de lectura (BUG-V11-02).
+/// Decide según el ancho realmente disponible (tras barra lateral e inspector).
+enum ActionBarLayout: Equatable {
+    /// Acciones con etiqueta y muestras de color en una sola fila.
+    case oneRow
+    /// Acciones con etiqueta arriba, colores debajo.
+    case twoRows
+    /// Solo iconos (acciones) y colores debajo: cabe en ~320 pt.
+    case compact
+
+    static let buttonWidth: CGFloat = 58
+    static let compactButtonWidth: CGFloat = 34
+    static let buttonSpacing: CGFloat = 2
+    /// Icono de resaltador + 5 muestras + «Quitar» + cerrar.
+    static let swatchesWidth: CGFloat = 270
+    static let rowGap: CGFloat = 16
+    static let padding: CGFloat = 24
+
+    static func actionsWidth(count: Int, compact: Bool) -> CGFloat {
+        let n = CGFloat(max(0, count))
+        return n * (compact ? compactButtonWidth : buttonWidth) + max(0, n - 1) * buttonSpacing
+    }
+
+    static func choose(width: CGFloat, actionCount: Int) -> ActionBarLayout {
+        let full = actionsWidth(count: actionCount, compact: false)
+        if full + rowGap + swatchesWidth + padding <= width { return .oneRow }
+        if max(full, swatchesWidth) + padding <= width { return .twoRows }
+        return .compact
+    }
+}

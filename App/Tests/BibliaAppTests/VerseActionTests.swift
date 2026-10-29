@@ -222,4 +222,25 @@ private func openDB() throws -> BibleDatabase { try BibleDatabase(path: try #req
             #expect(p.highlightSelected.count == HighlightColor.allCases.count)
         }
     }
+
+    /// BUG-V11-02: la disposición depende del ancho del panel de lectura.
+    @Test func actionBarLayoutFollowsWidth() {
+        #expect(ActionBarLayout.choose(width: 900, actionCount: 7) == .oneRow)
+        #expect(ActionBarLayout.choose(width: 560, actionCount: 7) == .twoRows)
+        #expect(ActionBarLayout.choose(width: 420, actionCount: 7) == .compact)
+        #expect(ActionBarLayout.choose(width: 320, actionCount: 8) == .compact)
+        // menos acciones (sin Strong ni Comparar) caben antes
+        #expect(ActionBarLayout.choose(width: 560, actionCount: 6) == .twoRows)
+        // compacta: acciones + 24 de margen caben en el panel mínimo (800 - barra 220 - inspector 260 = 320)
+        #expect(ActionBarLayout.actionsWidth(count: 8, compact: true) + ActionBarLayout.padding <= 320)
+        #expect(ActionBarLayout.swatchesWidth + ActionBarLayout.padding <= 320)
+        // monótona: más ancho nunca da una disposición más apretada
+        var last = 2
+        for w in stride(from: 300.0, through: 1200.0, by: 10.0) {
+            let l = ActionBarLayout.choose(width: w, actionCount: 8)
+            let rank = l == .compact ? 0 : l == .twoRows ? 1 : 2
+            #expect(rank >= last || last == 2)
+            last = rank
+        }
+    }
 }

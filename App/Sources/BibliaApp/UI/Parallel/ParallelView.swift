@@ -38,6 +38,7 @@ struct ParallelView: View {
         .background(theme.palette.background)
         .overlay(alignment: .bottom) { ToastView() }
         .overlay(alignment: .topTrailing) { SearchTermsChip() }
+        .verseActionBarDock()
     }
 }
 
@@ -98,11 +99,23 @@ private struct ParallelContent: View {
                 .onChange(of: state.scrollRequest) { _, r in scroll(proxy, to: r.verse) }
                 .onChange(of: settings.fontScale) { _, _ in scroll(proxy, to: state.anchorVerse) }
                 .onChange(of: stacked) { _, _ in scroll(proxy, to: state.anchorVerse) }
+                .onChange(of: state.actionBarVisible) { _, on in if on { reveal(proxy) } }
+                .onChange(of: state.actionBarVerse) { _, _ in if state.actionBarVisible { reveal(proxy) } }
                 .onChange(of: topID) { _, new in
                     guard tracking, let new else { return }
                     state.scrolled(toVerse: new < 0 ? (state.parallelRows.first?.number ?? 1) : new)
                 }
             }
+        }
+    }
+
+    /// La barra inferior reduce el área visible: desplaza lo mínimo para que la fila siga a la vista.
+    private func reveal(_ proxy: ScrollViewProxy) {
+        let verse = state.actionBarVerse
+        tracking = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            if state.parallelRows.contains(where: { $0.number == verse }) { proxy.scrollTo(verse) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { tracking = true }
         }
     }
 
@@ -203,12 +216,6 @@ private struct ParallelRowView: View {
             state.clickVerse(row.number, shift: m.contains(.shift), command: m.contains(.command))
         }
         .contextMenu { VerseMenuItems(scope: state.scope(forContextVerse: row.number)) }
-        .popover(isPresented: Binding(
-            get: { state.actionBarVisible && state.actionBarVerse == row.number && selected },
-            set: { if !$0 { state.actionBarVisible = false } }),
-                 attachmentAnchor: .point(UnitPoint(x: 0.5, y: 0.04)), arrowEdge: .bottom) {   // arriba de la fila: las filas altas no lo sacan de la ventana
-            VerseActionBar(scope: nil)
-        }
     }
 }
 

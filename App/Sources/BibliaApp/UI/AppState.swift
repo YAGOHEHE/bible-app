@@ -112,6 +112,8 @@ final class AppState {
     var canGoPrev: Bool { prevPosition != nil }
     var currentTranslation: Translation? { translations.first { $0.id == translationId } }
     var language: String { currentTranslation?.language ?? "es" }
+    /// Idioma de los nombres de libro (CUVT: chino tradicional).
+    var bookNameLanguage: String { BookNameLanguage.forTranslation(id: translationId, language: language) }
     var isLatin: Bool { language != "zh" }
     var chapterKey: String { "\(translationId)-\(book)-\(chapter)" }
 
@@ -168,7 +170,7 @@ final class AppState {
 
     private func loadBookNames() throws {
         guard let tr = transRepo else { return }
-        bookNames = try tr.bookNames(language: language)
+        bookNames = try tr.bookNames(language: bookNameLanguage)
     }
 
     func persist() {
@@ -535,7 +537,7 @@ final class AppState {
         }
         let vs = items.filter { selectedVerses.contains($0.number) }
         guard !vs.isEmpty else { return nil }
-        return CopyFormatter.format(verses: vs, bookName: bookName(book, language: language), chapter: chapter,
+        return CopyFormatter.format(verses: vs, bookName: bookName(book, language: bookNameLanguage), chapter: chapter,
                                     translationId: translationId, language: language)
     }
 

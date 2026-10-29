@@ -87,7 +87,7 @@ enum ParallelCopy {
                 }
             }
             guard !vs.isEmpty else { continue }
-            lines.append(CopyFormatter.format(verses: vs, bookName: bookName(book, col.language), chapter: chapter,
+            lines.append(CopyFormatter.format(verses: vs, bookName: bookName(book, BookNameLanguage.forTranslation(id: col.id, language: col.language)), chapter: chapter,
                                               translationId: col.id, language: col.language))
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")

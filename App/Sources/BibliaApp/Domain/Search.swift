@@ -144,6 +144,16 @@ struct SearchSuggestion: Equatable {
 enum BookNameLanguage {
     static func name(_ n: Int, language: String) -> String {
         guard let b = ReferenceParser.books[safe: n - 1] else { return "\(n)" }
-        switch language { case "en": return b.1; case "zh": return b.3; default: return b.2 }
+        switch language {
+        case "en": return b.1
+        case "zh": return b.3
+        case "zh-Hant": return ReferenceParser.traditional[safe: n - 1]?.0 ?? b.3
+        default: return b.2
+        }
+    }
+
+    /// Idioma de `book_names` para una versión: CUVT usa chino tradicional (BUG-V11-03); el resto, su idioma.
+    static func forTranslation(id: String, language: String) -> String {
+        id == "CUVT" ? "zh-Hant" : language
     }
 }

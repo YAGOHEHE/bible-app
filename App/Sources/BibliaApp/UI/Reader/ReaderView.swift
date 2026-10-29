@@ -23,6 +23,7 @@ struct ReaderView: View {
         .background(theme.palette.background)
         .overlay(alignment: .bottom) { ToastView() }
         .overlay(alignment: .topTrailing) { SearchTermsChip() }
+        .verseActionBarDock()
     }
 }
 
@@ -99,11 +100,23 @@ private struct ChapterScroll: View {
             .onChange(of: settings.fontScale) { _, _ in scroll(proxy, to: state.anchorVerse) }
             .onChange(of: settings.verseLayout) { _, _ in scroll(proxy, to: state.anchorVerse) }
             .onChange(of: settings.showHeadings) { _, _ in scroll(proxy, to: state.anchorVerse) }
+            .onChange(of: state.actionBarVisible) { _, on in if on { reveal(proxy) } }
+            .onChange(of: state.actionBarVerse) { _, _ in if state.actionBarVisible { reveal(proxy) } }
             .onChange(of: topID) { _, new in
                 guard tracking, let new else { return }
                 if new < 0 { state.scrolled(toVerse: state.items.first?.number ?? 1) }
                 else if let b = blocks[safe: new] { state.scrolled(toVerse: b.anchorVerse) }
             }
+        }
+    }
+
+    /// La barra inferior reduce el área visible: desplaza lo mínimo para que el versículo siga a la vista.
+    private func reveal(_ proxy: ScrollViewProxy) {
+        let verse = state.actionBarVerse
+        tracking = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            if let id = ChapterBuilder.blockID(for: verse, in: makeBlocks()) { proxy.scrollTo(id) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { tracking = true }
         }
     }
 
@@ -180,20 +193,6 @@ private struct BlockView: View {
         }
     }
 
-    /// Barra de acciones: se ancla al bloque del versículo pulsado; en párrafos, a la altura aproximada
-    /// del versículo (proporción de caracteres antes de él).
-    private func barBinding(for block: BookBlock) -> (isPresented: Binding<Bool>, anchor: UnitPoint) {
-        let v = state.actionBarVerse
-        let mine = block.pieces.contains { $0.verse == v && $0.label != nil }
-        let total = max(1, block.pieces.reduce(0) { $0 + $1.text.count })
-        var upTo = 0
-        for p in block.pieces { upTo += p.text.count; if p.verse == v && p.label != nil { break } }
-        let y = block.pieces.count > 1 ? min(1, max(0.05, Double(upTo) / Double(total))) : 1
-        return (Binding(get: { state.actionBarVisible && mine && state.selectedVerses.contains(v) },
-                        set: { if !$0 { state.actionBarVisible = false } }),
-                UnitPoint(x: 0.5, y: y))
-    }
-
     /// Sangría francesa (líneas que no caben): 1,5 em más que la primera línea.
     private var hang: CGFloat { block.kind == .poetry || block.kind == .list ? theme.pt * 1.5 : 0 }
 
@@ -202,7 +201,6 @@ private struct BlockView: View {
                                         selected: state.selectedVerses, hang: hang,
                                         hl: state.highlight(for: state.translationId))
         let single = block.verseNumbers.count == 1 ? block.verseNumbers.first : nil
-        let bar = barBinding(for: block)
         Text(attr)
             .lineSpacing(theme.lineSpacing(latin: latin))
             .tracking(latin ? 0 : theme.pt * 0.02)
@@ -220,9 +218,6 @@ private struct BlockView: View {
                 return .handled
             })
             .contextMenu { VerseMenuItems(scope: state.scope(forContextVerse: single)) }
-            .popover(isPresented: bar.isPresented, attachmentAnchor: .point(bar.anchor), arrowEdge: .bottom) {
-                VerseActionBar(scope: nil)
-            }
             .padding(.top, topGap)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(block.pieces.map { p in

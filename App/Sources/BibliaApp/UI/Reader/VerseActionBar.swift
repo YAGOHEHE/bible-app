@@ -1,45 +1,79 @@
 import SwiftUI
 
-/// Barra de acciones flotante (popover) sobre los versículos seleccionados.
+/// Barra de acciones anclada abajo del panel de lectura (dentro de la columna de detalle, así nunca
+/// invade la barra lateral ni el inspector). Se inserta como `safeAreaInset`: el texto se desplaza
+/// y el versículo seleccionado no queda tapado.
 struct VerseActionBar: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
     /// `nil` = la selección actual.
     var scope: Set<Int>?
+    @State private var width: CGFloat = 800
 
     var body: some View {
         let ctx = state.actionContext(scope: scope)
         let actions = VerseActions.visible(ctx).filter { $0 != .highlight }
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 2) {
-                ForEach(actions) { a in
-                    ActionButton(action: a, scope: scope)
-                }
-            }
-            Divider().overlay(theme.palette.border)
-            HStack(spacing: 8) {
-                Image(systemName: "highlighter").font(.system(size: 13))
-                    .foregroundStyle(theme.palette.textSecondary).accessibilityHidden(true)
-                ForEach(HighlightColor.allCases) { c in
-                    Swatch(color: c, scope: scope)
-                }
-                Spacer(minLength: 4)
-                Button("Quitar") { state.removeHighlightSelection(scope: scope) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(state.selectionHasHighlight(scope: scope) ? theme.palette.accent : theme.palette.textMuted)
-                    .disabled(!state.selectionHasHighlight(scope: scope) || !ctx.annotationsAvailable)
-                    .help("Quitar resaltado")
-                    .accessibilityLabel("Quitar resaltado")
-            }
+        let layout = ActionBarLayout.choose(width: width, actionCount: actions.count)
+        let buttons = HStack(spacing: ActionBarLayout.buttonSpacing) {
+            ForEach(actions) { a in ActionButton(action: a, scope: scope, compact: layout == .compact) }
         }
-        .padding(10)
-        .frame(minWidth: 360)
+        let swatches = HStack(spacing: 8) {
+            Image(systemName: "highlighter").font(.system(size: 13))
+                .foregroundStyle(theme.palette.textSecondary).accessibilityHidden(true)
+            ForEach(HighlightColor.allCases) { c in Swatch(color: c, scope: scope) }
+            Button("Quitar") { state.removeHighlightSelection(scope: scope) }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(state.selectionHasHighlight(scope: scope) ? theme.palette.accent : theme.palette.textMuted)
+                .disabled(!state.selectionHasHighlight(scope: scope) || !ctx.annotationsAvailable)
+                .help("Quitar resaltado")
+                .accessibilityLabel("Quitar resaltado")
+            Button { state.actionBarVisible = false } label: {
+                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(theme.palette.textSecondary).frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Cerrar barra (Esc)")
+            .accessibilityLabel("Cerrar barra de acciones")
+        }
+        VStack(spacing: 0) {
+            Divider().overlay(theme.palette.border)
+            Group {
+                if layout == .oneRow {
+                    HStack(spacing: ActionBarLayout.rowGap) { buttons; Spacer(minLength: 0); swatches }
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        buttons
+                        Divider().overlay(theme.palette.border)
+                        swatches
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, ActionBarLayout.padding / 2)
+            .padding(.vertical, 6)
+        }
         .background(theme.palette.surface)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onExitCommand { state.actionBarVisible = false }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Acciones del versículo")
     }
+}
+
+/// Hueco inferior con la barra, solo mientras hay selección y la barra está abierta.
+struct ActionBarInset: ViewModifier {
+    @Environment(AppState.self) private var state
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            if state.actionBarVisible && !state.selectedVerses.isEmpty { VerseActionBar(scope: nil) }
+        }
+    }
+}
+
+extension View {
+    func verseActionBarDock() -> some View { modifier(ActionBarInset()) }
 }
 
 private struct ActionButton: View {
@@ -47,6 +81,7 @@ private struct ActionButton: View {
     @Environment(\.theme) private var theme
     let action: VerseAction
     let scope: Set<Int>?
+    var compact = false
 
     var body: some View {
         let enabled = VerseActions.isEnabled(action, state.actionContext(scope: scope))
@@ -69,10 +104,13 @@ private struct ActionButton: View {
                             .accessibilityHidden(true)
                     }
                 }
-                Text(label).font(.system(size: 10)).lineLimit(1)
-                    .foregroundStyle(theme.palette.textSecondary)
+                if !compact {
+                    Text(label).font(.system(size: 10)).lineLimit(1)
+                        .foregroundStyle(theme.palette.textSecondary)
+                }
             }
-            .frame(width: 58, height: 46)
+            .frame(width: compact ? ActionBarLayout.compactButtonWidth : ActionBarLayout.buttonWidth,
+                   height: compact ? 30 : 46)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
