@@ -24,7 +24,10 @@ struct RootView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 460)
             } detail: {
-                if state.parallelOn { ParallelView() } else { ReaderView() }
+                Group { if state.parallelOn { ParallelView() } else { ReaderView() } }
+                    .inspector(isPresented: Binding(get: { state.showInspector }, set: { state.showInspector = $0 })) {
+                        StrongPanel().inspectorColumnWidth(min: 260, ideal: 320, max: 440)
+                    }
             }
             .navigationTitle("\(state.bookName(state.book)) \(state.chapter)")
             .navigationSubtitle(state.parallelOn && state.parallelColumns.count > 1
@@ -37,6 +40,9 @@ struct RootView: View {
             .toolbar { ReaderToolbar() }
             .sheet(isPresented: Binding(get: { state.showVersions }, set: { state.showVersions = $0 })) {
                 VersionManagerView()
+            }
+            .sheet(isPresented: Binding(get: { state.showHistory }, set: { state.showHistory = $0 })) {
+                HistoryView()
             }
         }
     }
@@ -79,6 +85,17 @@ struct ReaderToolbar: ToolbarContent {
                 }
                 .pickerStyle(.menu).help("Columnas o intercalado")
             }
+            Button { state.toggleStrongMode() } label: {
+                Image(systemName: "textformat.abc.dottedunderline")
+                    .foregroundStyle(state.strongMode && state.strongAvailable ? theme.palette.accent : theme.palette.textSecondary)
+            }
+            .disabled(!state.strongAvailable)
+            .help(state.strongAvailable ? "Modo Strong (⌥⌘S)" : "Esta versión no tiene números Strong")
+            .accessibilityLabel("Modo Strong, \(state.strongMode && state.strongAvailable ? "activado" : "desactivado")")
+            Button { state.toggleInspector() } label: { Image(systemName: "sidebar.right") }
+                .help("Inspector Strong (⌘I)")
+            Button { state.showHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
+                .help("Historial (⌘Y)")
             Button { state.showVersions = true } label: { Image(systemName: "books.vertical") }
                 .help("Gestor de versiones (⌥⌘V)")
             Button { settings.stepFont(-1) } label: { Image(systemName: "textformat.size.smaller") }
@@ -88,7 +105,3 @@ struct ReaderToolbar: ToolbarContent {
         }
     }
 }
-
-// Stubs de siguientes cortes.
-struct StrongPanel: View { var body: some View { Text("Strong (S06)") } }
-struct HistoryView: View { var body: some View { Text("Historial (S07)") } }

@@ -186,8 +186,7 @@ private struct BlockView: View {
     @ViewBuilder private func text(latin: Bool) -> some View {
         let attr = VerseText.attributed(pieces: block.pieces, theme: theme, latin: latin,
                                         selected: state.selectedVerses, hang: hang,
-                                        hl: TextHighlight(terms: state.searchTerms, flash: state.flashVerses,
-                                                          flashAlpha: state.flashAlpha))
+                                        hl: state.highlight(for: state.translationId))
         let verses = block.verseNumbers
         Text(attr)
             .lineSpacing(theme.lineSpacing(latin: latin))
@@ -203,6 +202,7 @@ private struct BlockView: View {
                 state.clickVerse(v, shift: m.contains(.shift), command: m.contains(.command))
             }
             .environment(\.openURL, OpenURLAction { url in
+                if url.scheme == StrongLink.scheme { state.openStrong(link: url); return .handled }
                 guard url.scheme == "verse", let n = Int(url.host ?? "") else { return .systemAction }
                 let m = NSEvent.modifierFlags
                 state.clickVerse(n, shift: m.contains(.shift), command: m.contains(.command))
@@ -220,9 +220,28 @@ struct TextHighlight: Equatable {
     var terms: [String] = []
     var flash: Set<Int> = []
     var flashAlpha: Double = 0
+    /// Modo Strong: tramos por versículo y palabra abierta en el inspector.
+    var strongSpans: [Int: [StrongSpan]] = [:]
+    var strongActive: StrongSelection?
     static let none = TextHighlight()
 
     func flashes(_ from: Int, _ to: Int) -> Bool { flashAlpha > 0 && flash.contains { $0 >= from && $0 <= to } }
+
+    /// Subrayado punteado + enlace en cada palabra con número, dentro del trozo `[offset, offset+count)` del versículo.
+    func applyStrong(to body: inout AttributedString, verse: Int, offset: Int, count: Int, theme: Theme) {
+        guard offset >= 0, let spans = strongSpans[verse] else { return }
+        for sp in spans where sp.start >= offset && sp.end <= offset + count {
+            let a = sp.start - offset, b = sp.end - offset
+            let chars = body.characters
+            guard let lo = chars.index(chars.startIndex, offsetBy: a, limitedBy: chars.endIndex),
+                  let hi = chars.index(chars.startIndex, offsetBy: b, limitedBy: chars.endIndex), lo < hi else { continue }
+            let active = strongActive == StrongSelection(strong: sp.strong, verse: verse, start: sp.start)
+            body[lo..<hi].underlineStyle = Text.LineStyle(pattern: active ? .solid : .dot, color: theme.palette.strongUnderline)
+            body[lo..<hi].foregroundColor = theme.palette.textPrimary
+            if active { body[lo..<hi].backgroundColor = theme.palette.selection }
+            if let u = StrongLink.url(sp, verse: verse) { body[lo..<hi].link = u }
+        }
+    }
 
     func apply(to body: inout AttributedString, plain: String, theme: Theme) {
         guard !terms.isEmpty else { return }
@@ -259,6 +278,7 @@ enum VerseText {
             if isSel { body.backgroundColor = theme.palette.selection }
             else if hl.flashes(v.number, v.endNumber) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
             hl.apply(to: &body, plain: v.text, theme: theme)
+            hl.applyStrong(to: &body, verse: v.number, offset: 0, count: v.text.count, theme: theme)
             out += numberRun(v.label, verse: v.number, theme: theme, selected: isSel, links: links)
             out += body
             if i < verses.count - 1 { out += AttributedString(latin ? " " : "") }
@@ -279,6 +299,7 @@ enum VerseText {
             if isSel { body.backgroundColor = theme.palette.selection }
             else if hl.flashes(p.verse, p.end) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
             hl.apply(to: &body, plain: p.text, theme: theme)
+            hl.applyStrong(to: &body, verse: p.verse, offset: p.textOffset, count: p.text.count, theme: theme)
             out += body
             if i < pieces.count - 1 { out += AttributedString(latin ? " " : "") }
         }

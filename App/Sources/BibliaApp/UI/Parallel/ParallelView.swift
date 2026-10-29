@@ -204,6 +204,11 @@ private struct ParallelCellView: View {
 
     private var latin: Bool { (column?.language ?? "es") != "zh" }
     private var name: String { column?.name ?? column?.id ?? "" }
+    private var parallelHighlight: TextHighlight {
+        var h = column.map { state.highlight(for: $0.id) } ?? TextHighlight(terms: state.searchTerms)
+        h.flash = []; h.flashAlpha = 0   // la fila ya se destaca por fondo
+        return h
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -222,10 +227,14 @@ private struct ParallelCellView: View {
                     }
                 }
                 Text(VerseText.attributed(verses: [v], theme: theme, latin: latin, selected: [], links: false,
-                                           hl: TextHighlight(terms: state.searchTerms)))
+                                           hl: parallelHighlight))
                     .lineSpacing(theme.lineSpacing(latin: latin))
                     .tracking(latin ? 0 : theme.pt * 0.02)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .environment(\.openURL, OpenURLAction { url in
+                        guard url.scheme == StrongLink.scheme else { return .systemAction }
+                        state.openStrong(link: url); return .handled
+                    })
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(name). Versículo \(v.label). \(v.text)")
             case .covered(let v):

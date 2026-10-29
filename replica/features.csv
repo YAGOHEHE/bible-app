@@ -16,16 +16,17 @@ Vista dividida con panel lateral (SecondSplit),versiones,should,yes,no,segundo p
 Desplazamiento sincronizado entre versiones paralelas,versiones,must,yes,yes,parte difícil; ver recon.md
 Color de comparación configurable,ajustes,could,yes,no,
 Selector de versión activa y lista de versiones (S04),versiones,must,yes,yes,Translations / CurrentBible
-Gestor de versiones: instalar/quitar módulos incluidos (S04),versiones,should,yes,partial,catálogo local; sin descargas remotas en v1; activar/ordenar/principal hecho, importar deshabilitado
+Gestor de versiones: instalar/quitar módulos incluidos (S04),versiones,should,yes,partial,catálogo local; sin descargas remotas en v1
+; activar/ordenar/principal hecho, importar deshabilitado
 Mensaje claro si la versión no está instalada o no tiene el libro,versiones,must,yes,yes,estado de error de S01/S04
 Biblia china 和合本 simplificada (dominio público),contenido,must,yes,no,fuente abierta
 Reina-Valera 1909 (dominio público),contenido,must,yes,no,sustituye a RVR1995
 KJV y ASV (dominio público),contenido,must,yes,no,
 KJV con números Strong (dominio público),contenido,must,yes,no,permite el flujo Strong
-Etiquetas Strong por palabra en el texto,estudio,must,yes,no,tokens <WG25>/<WH430>
-Tocar palabra para abrir el panel Strong (S06),estudio,must,yes,no,objetivo táctil a nivel de palabra
-Panel Strong: palabra original; transliteración; definición (S06),estudio,must,yes,no,diccionarios Strong públicos en inglés
-Versículos relacionados con el mismo número Strong,estudio,should,yes,no,"""versículos relacionados"" del original"
+Etiquetas Strong por palabra en el texto,estudio,must,yes,yes,tokens <WG25>/<WH430>
+Tocar palabra para abrir el panel Strong (S06),estudio,must,yes,yes,objetivo táctil a nivel de palabra
+Panel Strong: palabra original; transliteración; definición (S06),estudio,must,yes,yes,diccionarios Strong públicos en inglés
+Versículos relacionados con el mismo número Strong,estudio,should,yes,yes,"""versículos relacionados"" del original"
 Seleccionar versículo en el panel original desplaza la lectura a ese versículo,estudio,could,yes,no,
 Traducción literal (直译) y análisis de palabra (字汇分析),estudio,could,yes,no,requiere datos de morfología
 Textos originales griego/hebreo como versiones,contenido,could,yes,no,solo si hay texto libre disponible (p. ej. WLC/SBLGNT con licencia abierta)
@@ -38,7 +39,7 @@ Alcance de búsqueda: AT / NT / libro,búsqueda,should,yes,yes,
 Historial de búsquedas,búsqueda,should,yes,yes,SearchHistory
 Abrir resultado de búsqueda en el lector y resaltar coincidencia,búsqueda,must,yes,yes,
 Estado sin resultados en la búsqueda,búsqueda,must,yes,yes,
-Historial de lectura automático (翻页/跳转) (S07),historial,should,yes,no,tabla Auto
+Historial de lectura automático (翻页/跳转) (S07),historial,should,yes,yes,tabla Auto
 Historial manual / marcadores,historial,could,yes,no,tabla Manual
 Tamaño de fuente (porcentaje),ajustes,must,yes,yes,FontSizePercent
 Tema claro/oscuro (sigue al sistema) (S08),ajustes,must,yes,yes,
@@ -46,7 +47,8 @@ Esquemas de color (uno por modo claro/oscuro),ajustes,could,yes,no,
 Tipografía mixta CJK/Latín con fuentes elegibles,ajustes,should,yes,no,
 Ajustes de pantalla S08 (versiones; fuente; tema; formato),ajustes,must,yes,yes,
 Mostrar/ocultar panel de comentario/original,ajustes,should,yes,no,CommentAndOriginal
-Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,partial,adaptación nativa de escritorio (hecho: ⌘F, ⌘L, ⌘G; falta ⌃⌘S y resto)
+Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,partial,adaptación nativa de escritorio
+ (hecho: ⌘F, ⌘L, ⌘G; falta ⌃⌘S y resto)
 Varias ventanas / restauración de ventana,plataforma,could,no,no,propio del clon en macOS
 Nombres de personas y lugares subrayados con enlace a diccionario,estudio,could,yes,no,necesita diccionario propio; fuera de v1
 Referencias cruzadas (串珠) como enlaces,estudio,could,yes,no,hay datos abiertos (Treasury of Scripture Knowledge)

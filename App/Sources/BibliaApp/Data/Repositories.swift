@@ -197,4 +197,24 @@ struct LexiconRepository {
             .map { BibleRef(book: $0["book"], chapter: $0["chapter"], verseFrom: $0["verse"], verseTo: $0["verse"]) }
         }
     }
+
+    /// Todas las apariciones (versículos distintos) de un número Strong: recuento total + primeras `limit` con su texto.
+    func occurrences(strong: String, translationId: String, limit: Int = 200) throws -> (total: Int, items: [StrongOccurrence]) {
+        try db.reader.read { d in
+            let total = try Int.fetchOne(d, sql: """
+                SELECT COUNT(*) FROM (SELECT DISTINCT book, chapter, verse FROM verse_words
+                WHERE translation_id = ? AND strong = ?)
+                """, arguments: [translationId, strong]) ?? 0
+            let rows = try Row.fetchAll(d, sql: """
+                SELECT w.book, w.chapter, w.verse, v.text FROM
+                  (SELECT DISTINCT book, chapter, verse FROM verse_words WHERE translation_id = ? AND strong = ?) w
+                JOIN verses v ON v.translation_id = ? AND v.book = w.book AND v.chapter = w.chapter AND v.verse = w.verse
+                ORDER BY w.book, w.chapter, w.verse LIMIT ?
+                """, arguments: [translationId, strong, translationId, limit])
+            return (total, rows.map {
+                StrongOccurrence(ref: BibleRef(book: $0["book"], chapter: $0["chapter"], verseFrom: $0["verse"], verseTo: $0["verse"]),
+                                 text: $0["text"])
+            })
+        }
+    }
 }

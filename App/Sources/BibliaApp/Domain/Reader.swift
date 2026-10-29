@@ -16,17 +16,21 @@ struct DisplayVerse: Identifiable, Hashable {
 enum ChapterBuilder {
     /// - Parameter referenceMax: último versículo del capítulo en una versión de referencia (KJV);
     ///   permite etiquetar una fusión al final del capítulo.
-    static func build(verses: [Verse], headings: [Heading], referenceMax: Int? = nil) -> [DisplayVerse] {
+    static func build(verses: [Verse], headings: [Heading], referenceMax: Int? = nil, translationId: String? = nil) -> [DisplayVerse] {
+        // Con `translationId`, solo es fusión la laguna que Versification considera fusión (no omisión).
+        let book = verses.first?.book ?? 0, chapter = verses.first?.chapter ?? 0
+        func merges(_ verse: Int) -> Bool {
+            guard let t = translationId else { return true }
+            return Versification.gapIsMerge(translationId: t, book: book, chapter: chapter, verse: verse)
+        }
         // (ver también `blocks`)
         let vs = verses.sorted { $0.verse < $1.verse }
         var out: [DisplayVerse] = []
         for (i, v) in vs.enumerated() {
             var end = v.verse
-            if i + 1 < vs.count {
-                if vs[i + 1].verse > v.verse + 1 { end = vs[i + 1].verse - 1 }
-            } else if let m = referenceMax, m > v.verse {
-                end = m
-            }
+            let limit: Int? = i + 1 < vs.count ? (vs[i + 1].verse > v.verse + 1 ? vs[i + 1].verse - 1 : nil)
+                : (referenceMax.map { $0 > v.verse ? $0 : v.verse })
+            if let l = limit { while end < l, merges(end + 1) { end += 1 } }
             out.append(DisplayVerse(number: v.verse, endNumber: end, text: v.text, headings: []))
         }
         guard !out.isEmpty else { return out }
@@ -129,6 +133,8 @@ struct Piece: Hashable {
     let end: Int
     let label: String?
     let text: String
+    /// Desplazamiento (en caracteres) de `text` dentro del texto completo del versículo; -1 = desconocido.
+    var textOffset: Int = 0
 }
 
 /// Bloque de maquetación: título, párrafo, línea de poesía, elemento de lista o línea en blanco.
@@ -177,6 +183,13 @@ extension ChapterBuilder {
             return out
         }
         var seen = Set<Int>()
+        var cursors: [Int: String.Index] = [:]
+        func offset(of lp: LayoutPiece, in v: DisplayVerse) -> Int {
+            let from = cursors[v.number] ?? v.text.startIndex
+            guard let r = v.text.range(of: lp.text, range: from..<v.text.endIndex) else { return -1 }
+            cursors[v.number] = r.upperBound
+            return v.text.distance(from: v.text.startIndex, to: r.lowerBound)
+        }
         var cur: (kind: BookBlock.Kind, level: Int, flush: Bool, pieces: [Piece])?
         func flush() {
             if let c = cur, let f = c.pieces.first { add(c.kind, level: c.level, flush: c.flush, pieces: c.pieces, anchor: f.verse) }
@@ -191,7 +204,7 @@ extension ChapterBuilder {
             }
             guard let v = byNumber[lp.verse] else { continue }
             let first = !seen.contains(v.number)
-            let piece = Piece(verse: v.number, end: v.endNumber, label: first ? v.label : nil, text: lp.text)
+            let piece = Piece(verse: v.number, end: v.endNumber, label: first ? v.label : nil, text: lp.text, textOffset: offset(of: lp, in: v))
             let opens = lp.kind != "+"
             var kind: BookBlock.Kind { switch lp.kind {
                 case "q", "qr": return .poetry

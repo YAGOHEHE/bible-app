@@ -46,6 +46,14 @@ extension BibliaApp {
         let d = UserDefaults.standard
         if let t = d.string(forKey: "startTranslation") { state.setTranslation(t) }
         if let q = d.string(forKey: "startGoto") { state.goTo(q) }
+        if d.object(forKey: "strongMode") != nil { state.setStrongMode(d.bool(forKey: "strongMode")) }
+        if let id = d.string(forKey: "openStrong") {
+            state.strongSelection = state.strongSpans.sorted { $0.key < $1.key }.lazy.flatMap { v, ss in ss.map { (v, $0) } }
+                .first { $0.1.strong == id }.map { StrongSelection(strong: id, verse: $0.0, start: $0.1.start) }
+            state.strongWord = state.strongSelection.flatMap { s in state.strongSpans[s.verse]?.first { $0.start == s.start }?.word }
+            state.showStrong(id)
+        }
+        if d.bool(forKey: "showHistory") { state.showHistory = true }
         if let q = d.string(forKey: "startSearch") {
             search.start(q)
             if d.bool(forKey: "startSearchOpenFirst") { Task { await search.run(); search.open(index: 0) } }
@@ -91,6 +99,13 @@ struct ReaderCommands: Commands {
                 .keyboardShortcut("\\", modifiers: .command)
             Button("Versiones…") { state.showVersions = true }
                 .keyboardShortcut("v", modifiers: [.command, .option])
+            Divider()
+            Button(state.strongMode ? "Desactivar modo Strong" : "Modo Strong") { state.toggleStrongMode() }
+                .keyboardShortcut("s", modifiers: [.command, .option]).disabled(!state.strongAvailable)
+            Button(state.showInspector ? "Ocultar inspector Strong" : "Inspector Strong") { state.toggleInspector() }
+                .keyboardShortcut("i", modifiers: .command)
+            Button("Historial…") { state.showHistory = true }
+                .keyboardShortcut("y", modifiers: .command)
             Divider()
             Button("Copiar con referencia") { state.copyWithReference() }
                 .keyboardShortcut("c", modifiers: [.command, .option]).disabled(!state.canCopyReference)

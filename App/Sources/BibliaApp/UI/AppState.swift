@@ -41,6 +41,18 @@ final class AppState {
     var parallelColumns: [Translation] = []
     var parallelRows: [ParallelRow] = []
     var showVersions = false
+    // Strong (S06) e historial (S07)
+    var strongMode = false
+    var showInspector = false
+    var strongSpans: [Int: [StrongSpan]] = [:]
+    var strongSelection: StrongSelection?
+    var strongId: String?
+    var strongWord: String?
+    var strongEntry: LexiconEntry?
+    var strongOccurrences: [StrongOccurrence] = []
+    var strongOccurrenceTotal = 0
+    var strongLoading = false
+    var showHistory = false
 
     var bible: BibleDatabase?
     @ObservationIgnored var user: UserStore?
@@ -111,6 +123,7 @@ final class AppState {
         book = resume?.book ?? 43
         chapter = min(max(1, resume?.chapter ?? 1), max(1, chapterCounts[book - 1]))
         anchorVerse = resume?.verse ?? 1
+        strongMode = defaults.bool(forKey: "strong.on")
         parallelOn = defaults.bool(forKey: "par.on")
         parallelLayout = ParallelLayout(rawValue: defaults.string(forKey: "par.layout") ?? "") ?? .columns
         versionSet = VersionSet.load(from: defaults, installed: translations.map(\.id), primary: translationId)
@@ -138,9 +151,10 @@ final class AppState {
             let hs = try repo.headings(translationId: translationId, book: book, chapter: chapter)
             let ref = translationId == "KJV" ? nil :
                 try repo.maxVerse(translationId: "KJV", book: book, chapter: chapter)
-            items = ChapterBuilder.build(verses: vs, headings: hs, referenceMax: ref)
+            items = ChapterBuilder.build(verses: vs, headings: hs, referenceMax: ref, translationId: translationId)
             layout = try repo.layout(translationId: translationId, book: book, chapter: chapter)
             try loadParallel(repo)
+            try loadStrongSpans(repo)
         } catch {
             load = .failed("\(error)")
             return
@@ -169,9 +183,89 @@ final class AppState {
             let hs = try repo.headings(translationId: t.id, book: book, chapter: chapter)
             return ParallelColumnData(translationId: t.id, language: t.language,
                                       items: ChapterBuilder.build(verses: vs, headings: hs,
-                                                                  referenceMax: t.id == "KJV" ? nil : refMax))
+                                                                  referenceMax: t.id == "KJV" ? nil : refMax,
+                                                                  translationId: t.id))
         }
         parallelRows = ParallelBuilder.build(book: book, chapter: chapter, columns: data)
+    }
+
+    // MARK: Strong (S06)
+
+    /// Traducción con números Strong (KJV).
+    var strongTranslationId: String? { translations.first(where: \.hasStrongs)?.id }
+    /// ¿Hay alguna versión con Strong a la vista (principal o columna paralela)?
+    var strongAvailable: Bool {
+        guard let id = strongTranslationId else { return false }
+        return parallelOn ? parallelColumns.contains { $0.id == id } : translationId == id
+    }
+
+    private func loadStrongSpans(_ repo: VerseRepository) throws {
+        strongSpans = [:]
+        guard let id = strongTranslationId, strongAvailable else { return }
+        let vs = try repo.chapter(translationId: id, book: book, chapter: chapter)
+        let ws = try repo.words(translationId: id, book: book, chapter: chapter)
+        strongSpans = StrongAligner.alignChapter(verses: vs, words: ws)
+    }
+
+    func setStrongMode(_ on: Bool) {
+        strongMode = on && strongAvailable
+        defaults.set(on, forKey: "strong.on")
+    }
+    func toggleStrongMode() { setStrongMode(!strongMode) }
+
+    /// Resaltado para una versión: solo la que lleva Strong recibe tramos.
+    func highlight(for translationId: String) -> TextHighlight {
+        var h = TextHighlight(terms: searchTerms, flash: flashVerses, flashAlpha: flashAlpha)
+        if strongMode, translationId == strongTranslationId {
+            h.strongSpans = strongSpans
+            h.strongActive = strongSelection
+        }
+        return h
+    }
+
+    func openStrong(link url: URL) {
+        guard let sel = StrongLink.parse(url) else { return }
+        strongSelection = sel
+        strongWord = strongSpans[sel.verse]?.first { $0.start == sel.start }?.word
+        showStrong(sel.strong)
+    }
+
+    /// Abre el inspector con un número (p. ej. «G25»); `nil` = palabra sin número.
+    func showStrong(_ id: String?) {
+        showInspector = true
+        strongId = id
+        strongEntry = nil; strongOccurrences = []; strongOccurrenceTotal = 0
+        guard let id, let db = bible else { strongLoading = false; return }
+        strongLoading = true
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, self.strongId == id else { return }
+            let repo = LexiconRepository(db: db)
+            self.strongEntry = try? repo.entry(id)
+            if let occ = try? repo.occurrences(strong: id, translationId: self.strongTranslationId ?? "KJV") {
+                self.strongOccurrences = occ.items; self.strongOccurrenceTotal = occ.total
+            }
+            self.strongLoading = false
+        }
+    }
+
+    func toggleInspector() { showInspector.toggle() }
+
+    // MARK: historial (S07)
+
+    func historyDays() -> [HistoryDay] {
+        HistoryGrouping.group((try? user?.recentHistory(limit: 400)) ?? [])
+    }
+
+    func clearHistory() { try? user?.clearHistory() }
+
+    func openHistory(_ e: HistoryEntry) {
+        if e.translationId != translationId, translations.contains(where: { $0.id == e.translationId }) {
+            setTranslation(e.translationId)
+        }
+        showHistory = false
+        let v = e.verse
+        open(ref: BibleRef(book: e.book, chapter: e.chapter, verseFrom: v, verseTo: v), record: false)
     }
 
     // MARK: parallel / version manager (S03, S04, F03, F08)
@@ -287,11 +381,11 @@ final class AppState {
     }
 
     /// Navega a la referencia y destaca sus versículos (si los tiene).
-    func open(ref: BibleRef) {
+    func open(ref: BibleRef, record shouldRecord: Bool = true) {
         book = ref.book; chapter = ref.chapter
         reloadChapter(scrollTo: ref.verseFrom)
         touchRecent()
-        record(kind: "jump", verse: ref.verseFrom)
+        if shouldRecord { record(kind: "jump", verse: ref.verseFrom) }
         if let a = ref.verseFrom { flash(verses: a...(ref.verseTo ?? a)) } else { clearFlash() }
     }
 
