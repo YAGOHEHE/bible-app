@@ -98,15 +98,17 @@ struct ReaderToolbar: ToolbarContent {
             .help(state.strongAvailable ? "Modo Strong (⌥⌘S)" : "Esta versión no tiene números Strong")
             .accessibilityLabel("Modo Strong, \(state.strongMode && state.strongAvailable ? "activado" : "desactivado")")
             Button { state.toggleInspector() } label: { Image(systemName: "sidebar.right") }
-                .help("Inspector Strong (⌘I)")
+                .help("Inspector Strong (⌘I)").accessibilityLabel("Panel lateral: Strong, nota y referencias")
             Button { state.showHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
-                .help("Historial (⌘Y)")
+                .help("Historial (⌘Y)").accessibilityLabel("Historial")
             Button { state.showVersions = true } label: { Image(systemName: "books.vertical") }
-                .help("Gestor de versiones (⌥⌘V)")
+                .help("Gestor de versiones (⌥⌘V)").accessibilityLabel("Gestor de versiones")
             Button { settings.stepFont(-1) } label: { Image(systemName: "textformat.size.smaller") }
-                .help("Reducir tamaño (⌘−)").disabled(settings.fontScale <= FontScale.min + 0.001)
+                .help("Reducir tamaño (⌘−)").accessibilityLabel("Reducir tamaño de letra")
+                .disabled(settings.fontScale <= FontScale.min + 0.001)
             Button { settings.stepFont(1) } label: { Image(systemName: "textformat.size.larger") }
-                .help("Aumentar tamaño (⌘+)").disabled(settings.fontScale >= FontScale.max - 0.001)
+                .help("Aumentar tamaño (⌘+)").accessibilityLabel("Aumentar tamaño de letra")
+                .disabled(settings.fontScale >= FontScale.max - 0.001)
         }
     }
 }
