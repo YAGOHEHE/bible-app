@@ -16,6 +16,9 @@ public struct ReaderStyle {
     public var perVerse: Bool
     public static let baseSize: CGFloat = 17
 
+    /// Anotaciones del capítulo: el constructor inserta ⚑ y ✎ (los resaltados se pintan aparte, ver `AnnotationOverlays`).
+    public var annotations = ChapterAnnotations()
+
     public init(palette: ReaderPalette, fontScale: Double, latin: Bool, perVerse: Bool) {
         self.palette = palette; self.fontScale = fontScale; self.latin = latin; self.perVerse = perVerse
     }
@@ -107,7 +110,13 @@ public enum ChapterAttributedBuilder {
         var prev: BookBlock?          // último bloque visible (sin contar los vacíos)
         var blankBefore = false
         var pendingTarget: Int?       // inicio de los títulos que preceden al siguiente texto
-        for b in blocks {
+        // Último trozo de cada versículo (ahí va ✎) y notas que ya tienen icono.
+        var lastPiece: [Int: [Int]] = [:]
+        for (bi, b) in blocks.enumerated() where b.kind == .prose || b.kind == .poetry || b.kind == .list {
+            for (pi, p) in b.pieces.enumerated() { lastPiece[p.verse] = [bi, pi] }
+        }
+        var shownNotes = Set<Int64>()
+        for (bi, b) in blocks.enumerated() {
             switch b.kind {
             case .blank:
                 blankBefore = true
@@ -155,6 +164,10 @@ public enum ChapterAttributedBuilder {
                 let blockStart = out.length
                 for (i, piece) in b.pieces.enumerated() {
                     let start = out.length
+                    let ann = s.annotations.forDisplayVerse(number: piece.verse, end: max(piece.verse, piece.end))
+                    if piece.label != nil, ann.isBookmarked {
+                        out.append(AnnotationOverlays.bookmarkFlag(verse: piece.verse, pt: pt, palette: pal, paragraph: ps))
+                    }
                     if let l = piece.label {
                         out.append(NSAttributedString(string: l + "\u{2009}", attributes: [
                             .font: ReaderFonts.verseNumber(size: pt * 0.62), .foregroundColor: pal.verseNumber,
@@ -167,6 +180,11 @@ public enum ChapterAttributedBuilder {
                     var t = piece.text
                     if i < b.pieces.count - 1, s.latin { t += " " }
                     out.append(NSAttributedString(string: t, attributes: attrs))
+                    if lastPiece[piece.verse] == [bi, i] {
+                        for n in AnnotationOverlays.newNotes(ann, shown: &shownNotes) {
+                            out.append(AnnotationOverlays.noteIcon(noteId: n.id, verse: piece.verse, pt: pt, palette: pal, paragraph: ps))
+                        }
+                    }
                     extend(piece.verse, NSRange(location: start, length: out.length - start))
                     if targets[piece.verse] == nil { targets[piece.verse] = pendingTarget ?? (i == 0 ? blockStart : start) }
                     pendingTarget = nil

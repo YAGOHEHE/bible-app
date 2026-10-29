@@ -2,10 +2,11 @@ import AppKit
 import BibliaCore
 import ClassicKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSMenuDelegate {
     static let bundleDomain = "org.biblia.clasica"
     var settings: ClassicSettings!
     var model: ReaderModel!
+    var annotations: AnnotationsModel!
     var main: MainWindowController?
     var prefs: PreferencesWindowController?
     var versions: VersionsWindowController?
@@ -18,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         settings = ClassicSettings()
         let user = (try? UserStore.defaultURL(folder: "Biblia Clásica")).flatMap { try? UserStore(path: $0.path) }
         model = ReaderModel(settings: settings, user: user)
+        annotations = AnnotationsModel(reader: model, store: user.map { AnnotationStore(user: $0) })
         buildMenu()
         do {
             try model.bootstrap(db: try BibleDatabase.openBundled())
@@ -29,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             NSApp.terminate(nil)
             return
         }
-        let wc = MainWindowController(model: model, settings: settings)
+        let wc = MainWindowController(model: model, settings: settings, annotations: annotations)
         main = wc
         wc.onOpenVersions = { [weak self] in self?.showVersions(nil) }
         wc.reader.onOpenVersions = { [weak self] in self?.showVersions(nil) }
@@ -42,7 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-    func applicationWillTerminate(_ notification: Notification) { model?.persist() }
+    func applicationWillTerminate(_ notification: Notification) {
+        main?.noteEditor.flush()      // la nota que se está escribiendo se guarda al salir
+        model?.persist()
+    }
 
     // MARK: actions
 
@@ -81,7 +86,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @objc func toggleGlosses(_ sender: Any?) { model.setGlossesOn(!model.parallel.glossesOn) }
     @objc func gotoReference(_ sender: Any?) { main?.window?.makeKeyAndOrderFront(nil); main?.focusGoto() }
-    @objc func copyWithReference(_ sender: Any?) { main?.reader.copyWithReference() }
+    @objc func copyWithReference(_ sender: Any?) { main?.commands.perform(.copyReference, scope: nil) }
+
+    /// ⌘C: con versículos seleccionados copia los versículos; si no (o si el foco está en un campo de texto,
+    /// p. ej. el editor de notas), hace la copia normal.
+    @objc func copyAction(_ sender: Any?) {
+        let fr = main?.window?.firstResponder
+        if !(fr is NSText) || fr is ReaderTextView, main?.commands.copyVerseSelection() == true { return }
+        NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: sender)
+    }
+    @objc func versePerform(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let a = VerseAction(rawValue: raw) else { return }
+        main?.commands.perform(a, scope: nil)
+    }
+    @objc func verseHighlightLast(_ sender: Any?) { main?.commands.perform(.highlight, scope: nil) }
+    @objc func verseRemoveHighlight(_ sender: Any?) { main?.commands.removeHighlight(scope: nil) }
+    @objc func verseDeselectAll(_ sender: Any?) { main?.commands.deselectAll() }
+    @objc func versePerformCopy(_ sender: Any?) { main?.commands.perform(.copy, scope: nil) }
     @objc func prevChapter(_ sender: Any?) { model.goPrev() }
     @objc func nextChapter(_ sender: Any?) { model.goNext() }
     @objc func fontLarger(_ sender: Any?) { settings.stepFont(1) }
@@ -91,6 +112,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func pickLayout(_ sender: NSMenuItem) { if let l = VerseLayout(rawValue: sender.representedObject as? String ?? "") { settings.layout = l } }
     @objc func toggleHeadings(_ sender: Any?) { settings.showHeadings.toggle() }
     @objc func focusFilter(_ sender: Any?) { main?.sidebar.focusFilter() }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu.title == "Resaltar con" { self.main?.commands.fillHighlightSubmenu(menu) }
+    }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard model != nil else { return false }
@@ -117,6 +142,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return main?.strongAvailable ?? false || settings.strongMode
         case #selector(toggleInspector(_:)):
             item.state = (main?.inspectorVisible ?? false) ? .on : .off
+        case #selector(copyAction(_:)):
+            return true
+        case #selector(versePerform(_:)), #selector(versePerformCopy(_:)):
+            guard let c = main?.commands else { return false }
+            let st = c.menuState(scope: nil)
+            if let raw = item.representedObject as? String, let a = VerseAction(rawValue: raw) {
+                if a == .bookmark { item.title = st.bookmarkTitle }
+                if a == .crossRefs { item.title = st.crossRefCount > 0 ? "Referencias cruzadas (\(st.crossRefCount))" : "Referencias cruzadas" }
+                return st.isEnabled(a)
+            }
+            return st.isEnabled(.copy)
+        case #selector(verseHighlightLast(_:)): return main?.commands.menuState(scope: nil).canHighlight ?? false
+        case #selector(verseRemoveHighlight(_:)): return main?.commands.menuState(scope: nil).canRemoveHighlight ?? false
+        case #selector(verseDeselectAll(_:)): return !(annotations?.selection.isEmpty ?? true) || (annotations?.barVisible ?? false)
+        case #selector(copyWithReference(_:)):
+            return !(annotations?.selection.isEmpty ?? true) || (main?.reader.hasTextSelection ?? false)
         case #selector(findNext(_:)), #selector(findPrevious(_:)):
             return !(main?.sidebar.searchVC.search.flatHits.isEmpty ?? true)
         default: break
@@ -162,9 +203,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         _ = add(edit, "Rehacer", Selector(("redo:")), "z", [.command, .shift], target: nil)
         edit.addItem(.separator())
         _ = add(edit, "Cortar", #selector(NSText.cut(_:)), "x", target: nil)
-        _ = add(edit, "Copiar", #selector(NSText.copy(_:)), "c", target: nil)
+        _ = add(edit, "Copiar", #selector(copyAction(_:)), "c")
         _ = add(edit, "Pegar", #selector(NSText.paste(_:)), "v", target: nil)
-        _ = add(edit, "Copiar con referencia", #selector(copyWithReference(_:)), "c", [.command, .option])
         _ = add(edit, "Seleccionar todo", #selector(NSText.selectAll(_:)), "a", target: nil)
         edit.addItem(.separator())
         _ = add(edit, "Ir a referencia…", #selector(gotoReference(_:)), "l")
@@ -173,6 +213,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         _ = add(edit, "Buscar siguiente", #selector(findNext(_:)), "g")
         _ = add(edit, "Buscar anterior", #selector(findPrevious(_:)), "g", [.command, .shift])
         _ = add(edit, "Filtrar libros", #selector(focusFilter(_:)), "f", [.command, .option])
+
+        let verse = top("Versículo")
+        func verseItem(_ title: String, _ a: VerseAction, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command) {
+            let i = add(verse, title, #selector(versePerform(_:)), key, mods)
+            i.representedObject = a.rawValue
+        }
+        _ = add(verse, "Copiar versículos", #selector(versePerformCopy(_:)))
+        _ = add(verse, "Copiar con referencia", #selector(copyWithReference(_:)), "c", [.command, .option])
+        verse.addItem(.separator())
+        _ = add(verse, "Resaltar con el último color", #selector(verseHighlightLast(_:)), "h", [.command, .option])
+        let hlRoot = NSMenuItem(title: "Resaltar con", action: nil, keyEquivalent: ""); verse.addItem(hlRoot)
+        let hlMenu = NSMenu(title: "Resaltar con"); hlMenu.delegate = self; hlRoot.submenu = hlMenu
+        _ = add(verse, "Quitar resaltado", #selector(verseRemoveHighlight(_:)))
+        verse.addItem(.separator())
+        verseItem("Anotar…", .note, "n", [.command, .option])
+        verseItem("Marcador", .bookmark, "d")
+        _ = add(verse, "Referencias cruzadas", #selector(showReferences(_:)), "r", [.command, .option])
+        verseItem("Comparar versiones", .compare)
+        verseItem("Abrir en Strong", .strong)
+        verse.addItem(.separator())
+        _ = add(verse, "Deseleccionar todo", #selector(verseDeselectAll(_:)), "a", [.command, .shift])
 
         let view = top("Ver")
         _ = add(view, "Capítulo anterior", #selector(prevChapter(_:)), "[")
@@ -206,7 +267,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         view.addItem(.separator())
         _ = add(view, "Modo Strong", #selector(toggleStrong(_:)), "s", [.command, .option])
         _ = add(view, "Inspector", #selector(toggleInspector(_:)), "i")
-        _ = add(view, "Referencias del versículo…", #selector(showReferences(_:)), "r", [.command, .option])
         _ = add(view, "Historial de lectura", #selector(showHistory(_:)), "y")
         view.addItem(.separator())
         headingsItem = add(view, "Mostrar títulos de sección", #selector(toggleHeadings(_:)))

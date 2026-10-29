@@ -24,6 +24,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     let reader: ReaderViewController
     let sidebar: SidebarViewController
     let inspector: InspectorViewController
+    let annotations: AnnotationsModel
+    let noteEditor = NoteEditorModel()
+    private(set) var commands: VerseCommands!
     private var inspectorItem: NSSplitViewItem!
     private var sidebarItem: NSSplitViewItem!
     private let strongButton = NSButton()
@@ -42,11 +45,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     private let smaller = NSButton()
     private let larger = NSButton()
 
-    init(model: ReaderModel, settings: ClassicSettings) {
-        self.model = model; self.settings = settings
-        reader = ReaderViewController(model: model, settings: settings)
-        sidebar = SidebarViewController(model: model, settings: settings)
-        inspector = InspectorViewController(model: model, settings: settings)
+    init(model: ReaderModel, settings: ClassicSettings, annotations: AnnotationsModel) {
+        self.model = model; self.settings = settings; self.annotations = annotations
+        noteEditor.store = annotations.store
+        reader = ReaderViewController(model: model, settings: settings, annotations: annotations)
+        sidebar = SidebarViewController(model: model, settings: settings, annotations: annotations)
+        inspector = InspectorViewController(model: model, settings: settings, annotations: annotations, noteEditor: noteEditor)
 
         let side = NSSplitViewItem(viewController: sidebar)
         side.minimumThickness = 200
@@ -79,6 +83,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         w.center()
         w.setFrameAutosaveName("MainWindow")
         super.init(window: w)
+        commands = VerseCommands(main: self)
+        reader.commands = commands
+        noteEditor.onChange = { [weak annotations] in annotations?.didMutate() }
+        inspector.onRequestNote = { [weak self] in self?.commands.perform(.note, scope: nil) }
+        reader.onOpenNote = { [weak self] id in self?.openNote(id: id) }
+        sidebar.notesVC.onOpen = { [weak self] item in self?.openAnnotation(item) }
+        NotificationCenter.default.addObserver(self, selector: #selector(selectionChangedForInspector), name: .classicSelectionChanged, object: annotations)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowWillClose(_:)), name: NSWindow.willCloseNotification, object: w)
 
         let tb = NSToolbar(identifier: NSToolbar.Identifier("MainToolbar"))
         tb.delegate = self
@@ -230,7 +242,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     // MARK: búsqueda / Strong / inspector
 
     private func sidebarModeChanged(_ m: SidebarViewController.Mode) {
-        guard m == .search else { return }
+        guard m == .search || m == .notes else { return }
         if let it = sidebarItem, it.isCollapsed { it.animator().isCollapsed = false }
         // El panel de resultados necesita más ancho que la lista de libros.
         let w = sidebar.view.frame.width
@@ -271,7 +283,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     }
 
     @objc func toggleInspector(_ sender: Any?) {
-        if inspectorItem.isCollapsed { showInspector() } else { inspectorItem.animator().isCollapsed = true }
+        if inspectorItem.isCollapsed { showInspector() } else { inspector.flushNote(); inspectorItem.animator().isCollapsed = true }
         inspectorButton.state = inspectorItem.isCollapsed ? .off : .on
     }
 
@@ -293,8 +305,44 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
 
     var inspectorVisible: Bool { !inspectorItem.isCollapsed }
 
-    /// «Referencias del versículo…»: versículo(s) bajo la selección o el cursor.
+    @objc private func windowWillClose(_ n: Notification) { noteEditor.flush() }
+
+    /// Abre la pestaña «Nota» sobre `range` del capítulo actual (con la nota `selecting` si se indica).
+    func openNote(range: ClosedRange<Int>, selecting id: Int64? = nil, book: Int? = nil, chapter: Int? = nil) {
+        noteEditor.load(book: book ?? model.book, chapter: chapter ?? model.chapter, range: range, selecting: id)
+        noteEditor.preview = false           // abrir una nota es para escribir: vuelve a «Editar»
+        showInspector()
+        inspector.select(.note)
+        inspector.focusNoteEditor()
+    }
+
+    /// Icono ✎ del texto: abre la nota (en el capítulo mostrado).
+    func openNote(id: Int64) {
+        guard let n = annotations.chapter.notes.first(where: { $0.id == id }) else { return }
+        openNote(range: n.range, selecting: id)
+    }
+
+    /// Fila del panel «Notas»: navega al pasaje y, si es una nota, la abre.
+    func openAnnotation(_ item: AnnotationItem) {
+        let hi = max(item.verseStart, item.verseEnd)
+        _ = model.navigate(to: BibleRef(book: item.book, chapter: item.chapter, verseFrom: item.verseStart, verseTo: hi))
+        if item.kind == .note { openNote(range: item.verseStart...hi, selecting: item.noteId, book: item.book, chapter: item.chapter) }
+    }
+
+    /// Con el inspector abierto en «Referencias», sigue la selección (primer..último versículo).
+    @objc private func selectionChangedForInspector() {
+        guard inspectorVisible, inspector.tab == .refs, let r = annotations.range() else { return }
+        inspector.showRefs(book: model.book, chapter: model.chapter, verses: Array(r), switchTab: false)
+    }
+
+    func showReferences(range: ClosedRange<Int>) {
+        showInspector()
+        inspector.showRefs(book: model.book, chapter: model.chapter, verses: Array(range))
+    }
+
+    /// «Referencias del versículo…»: versículo(s) seleccionados; si no hay, bajo la selección de texto o el cursor.
     func showReferences() {
+        if let r = annotations.range() { showReferences(range: r); return }
         let vs = reader.currentVerses()
         guard !vs.isEmpty else {
             NSSound.beep()

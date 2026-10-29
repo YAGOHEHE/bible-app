@@ -104,17 +104,20 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private var palette = ReaderPalette.light
     private var suppress = false
     private var gridBook = 0
-    private let modeSegment = NSSegmentedControl(labels: ["Libros", "Buscar"], trackingMode: .selectOne, target: nil, action: nil)
+    private let modeSegment = NSSegmentedControl(labels: ["Libros", "Buscar", "Notas"], trackingMode: .selectOne, target: nil, action: nil)
     let searchVC: SearchViewController
-    enum Mode: Int { case books = 0, search = 1 }
+    let notesVC: NotesPanelViewController
+    enum Mode: Int { case books = 0, search = 1, notes = 2 }
     private(set) var mode = Mode.books
     var onModeChanged: ((Mode) -> Void)?
 
-    init(model: ReaderModel, settings: ClassicSettings) {
+    init(model: ReaderModel, settings: ClassicSettings, annotations: AnnotationsModel) {
         self.model = model; self.settings = settings
         searchVC = SearchViewController(model: model, settings: settings)
+        notesVC = NotesPanelViewController(model: model, annotations: annotations, settings: settings)
         super.init(nibName: nil, bundle: nil)
         addChild(searchVC)
+        addChild(notesVC)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) no se usa") }
 
@@ -169,7 +172,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let sv = searchVC.view
         sv.translatesAutoresizingMaskIntoConstraints = false
         sv.isHidden = true
-        for v in [modeSegment, filter, outlineScroll, separator, gridTitle, gridScroll, sv] as [NSView] { root.addSubview(v) }
+        let nv = notesVC.view
+        nv.translatesAutoresizingMaskIntoConstraints = false
+        nv.isHidden = true
+        for v in [modeSegment, filter, outlineScroll, separator, gridTitle, gridScroll, sv, nv] as [NSView] { root.addSubview(v) }
         NSLayoutConstraint.activate([
             modeSegment.topAnchor.constraint(equalTo: root.topAnchor, constant: 10),
             modeSegment.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 10),
@@ -178,6 +184,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             sv.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             sv.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             sv.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            nv.topAnchor.constraint(equalTo: modeSegment.bottomAnchor, constant: 8),
+            nv.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            nv.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            nv.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             filter.topAnchor.constraint(equalTo: modeSegment.bottomAnchor, constant: 8),
             filter.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 10),
             filter.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -10),
@@ -300,7 +310,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         modeSegment.selectedSegment = m.rawValue
         let books = m == .books
         for v in [filter, outlineScroll, separator, gridTitle, gridScroll] as [NSView] { v.isHidden = !books }
-        searchVC.view.isHidden = books
+        searchVC.view.isHidden = m != .search
+        notesVC.view.isHidden = m != .notes
+        if m == .notes { notesVC.refresh() }
         onModeChanged?(m)
     }
 

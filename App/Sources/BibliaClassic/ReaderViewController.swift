@@ -7,11 +7,50 @@ final class ReaderTextView: NSTextView {
     var onPrev: (() -> Void)?
     var onNext: (() -> Void)?
     var onZoomIn: (() -> Void)?
+    /// Clic en un versículo (número o texto): (versículo, ⇧).
+    var onVerseClick: ((Int, Bool) -> Void)?
+    /// Menú contextual de un versículo (nil = fuera de un versículo).
+    var menuProvider: ((Int?) -> NSMenu?)?
+    /// Esc: devuelve true si lo atendió (vació la selección de versículos).
+    var onEscape: (() -> Bool)?
+
+    /// Versículo bajo el punto (coordenadas de la vista) y si está sobre un enlace (palabra Strong, icono de nota).
+    func verseHit(at p: NSPoint) -> (verse: Int, isLink: Bool)? {
+        guard let lm = layoutManager, let tc = textContainer, let st = textStorage, st.length > 0 else { return nil }
+        let o = textContainerOrigin
+        let pt = NSPoint(x: p.x - o.x, y: p.y - o.y)
+        var frac: CGFloat = 0
+        let g = lm.glyphIndex(for: pt, in: tc, fractionOfDistanceThroughGlyph: &frac)
+        guard g < lm.numberOfGlyphs else { return nil }
+        let used = lm.lineFragmentUsedRect(forGlyphAt: g, effectiveRange: nil)
+        guard used.insetBy(dx: -2, dy: -1).contains(pt) else { return nil }
+        let ci = lm.characterIndexForGlyph(at: g)
+        guard ci < st.length, let v = st.attribute(.bibliaVerse, at: ci, effectiveRange: nil) as? Int else { return nil }
+        return (v, st.attribute(.link, at: ci, effectiveRange: nil) != nil)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        guard let hit = verseHit(at: p), !hit.isLink, onVerseClick != nil else { super.mouseDown(with: event); return }
+        window?.makeFirstResponder(self)
+        if event.modifierFlags.contains(.shift) { onVerseClick?(hit.verse, true); return }
+        // El clic simple deja que NSTextView siga el arrastre (selección de texto, doble clic); si no se seleccionó
+        // texto, es un clic en el versículo.
+        super.mouseDown(with: event)
+        if event.clickCount == 1, selectedRange().length == 0 { onVerseClick?(hit.verse, false) }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let p = convert(event.locationInWindow, from: nil)
+        if let provider = menuProvider, let hit = verseHit(at: p), let m = provider(hit.verse) { return m }
+        return super.menu(for: event)
+    }
 
     override func keyDown(with event: NSEvent) {
         var mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         mods.subtract([.numericPad, .function])
         if mods.isEmpty {
+            if event.keyCode == 53, onEscape?() == true { return }
             switch event.keyCode {
             case 123: onPrev?(); return
             case 124: onNext?(); return
@@ -89,7 +128,13 @@ final class ColumnsHeaderView: NSView {
 /// S01: lector. NSTextView dentro de un NSScrollView con el capítulo como NSAttributedString.
 final class ReaderViewController: NSViewController, NSTextViewDelegate {
     let model: ReaderModel
+    let annotations: AnnotationsModel
+    weak var commands: VerseCommands?
     private let settings: ClassicSettings
+    private let bar = ActionBarView()
+    private var structSig = ""
+    private var primaryEnds: [Int: Int] = [:]
+    private var columnEnds: [[Int: Int]] = []
     private let scrollView = NSScrollView()
     private let textView = ReaderTextView()
     private let messageLabel = NSTextField(labelWithString: "")
@@ -111,9 +156,11 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
     var onOpenVersions: (() -> Void)?
     /// Palabra Strong pulsada: (selección, versión, palabra, longitud).
     var onStrongClicked: ((StrongSelection, String, String, Int) -> Void)?
+    /// Icono ✎ pulsado: abre esa nota.
+    var onOpenNote: ((Int64) -> Void)?
 
-    init(model: ReaderModel, settings: ClassicSettings) {
-        self.model = model; self.settings = settings
+    init(model: ReaderModel, settings: ClassicSettings, annotations: AnnotationsModel) {
+        self.model = model; self.settings = settings; self.annotations = annotations
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) no se usa") }
@@ -148,6 +195,7 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         textView.onPrev = { [weak self] in self?.model.goPrev() }
         textView.onNext = { [weak self] in self?.model.goNext() }
         textView.onZoomIn = { [weak self] in self?.settings.stepFont(1) }
+        wire(textView)
 
         messageLabel.alignment = .center
         messageLabel.isHidden = true
@@ -169,6 +217,12 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         root.addSubview(colScroll)
         root.addSubview(colHeader)
         root.addSubview(messageLabel)
+        bar.isHidden = true
+        bar.onAction = { [weak self] a in self?.commands?.perform(a, scope: nil) }
+        bar.onHighlight = { [weak self] c in self?.commands?.highlight(c, scope: nil) }
+        bar.onRemoveHighlight = { [weak self] in self?.commands?.removeHighlight(scope: nil) }
+        bar.onClose = { [weak self] in self?.annotations.closeBar() }
+        root.addSubview(bar)
         view = root
 
         let nc = NotificationCenter.default
@@ -177,7 +231,19 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         nc.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
         nc.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: colScroll.contentView)
         nc.addObserver(self, selector: #selector(parallelChanged), name: .classicParallelChanged, object: model)
+        nc.addObserver(self, selector: #selector(selectionChanged), name: .classicSelectionChanged, object: annotations)
+        nc.addObserver(self, selector: #selector(annotationsChanged), name: .classicAnnotationsChanged, object: annotations)
         applyPalette()
+    }
+
+    /// Clic en versículos, menú contextual y Esc de una vista de texto del lector.
+    private func wire(_ tv: ReaderTextView) {
+        tv.onVerseClick = { [weak self] v, shift in self?.annotations.click(v, shift: shift) }
+        tv.menuProvider = { [weak self] v in self?.commands?.contextMenu(forVerse: v) }
+        tv.onEscape = { [weak self] in
+            guard let a = self?.annotations, !a.selection.isEmpty || a.barVisible else { return false }
+            a.clearSelection(); return true
+        }
     }
 
     var textViewForFocus: NSView { mode == .columns ? (colViews.first ?? textView) : textView }
@@ -189,11 +255,17 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
                               columnCount: model.columnIds.count, width: view.bounds.width)
     }
 
+    private var barShown: Bool { annotations.barVisible && !annotations.selection.isEmpty }
+
     private func layoutFrames() {
-        let b = view.bounds
+        let full = view.bounds
+        let barH = barShown ? bar.preferredHeight(width: full.width) : 0
+        bar.frame = NSRect(x: 0, y: 0, width: full.width, height: barH)
+        // La barra va dentro de la columna de lectura; el contenido recibe el hueco inferior para no quedar tapado.
+        let b = NSRect(x: 0, y: barH, width: full.width, height: max(0, full.height - barH))
         if mode == .columns {
-            colHeader.frame = NSRect(x: 0, y: b.height - ColumnsHeaderView.height, width: b.width, height: ColumnsHeaderView.height)
-            colScroll.frame = NSRect(x: 0, y: 0, width: b.width, height: b.height - ColumnsHeaderView.height)
+            colHeader.frame = NSRect(x: 0, y: full.height - ColumnsHeaderView.height, width: b.width, height: ColumnsHeaderView.height)
+            colScroll.frame = NSRect(x: 0, y: barH, width: b.width, height: max(0, b.height - ColumnsHeaderView.height))
             scrollView.frame = b
         } else {
             scrollView.frame = b
@@ -244,6 +316,7 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         messageLabel.layer?.backgroundColor = palette.surface.cgColor
         messageLabel.layer?.borderColor = palette.border.cgColor
         messageLabel.layer?.borderWidth = 1
+        if !bar.isHidden { bar.update(state: barState(), activeColor: annotations.highlightColor(), palette: palette) }
     }
 
     @objc private func settingsChanged() {
@@ -252,8 +325,18 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         render(scrollTo: model.anchorVerse)
     }
 
+    private var pendingAnchor: Int?
+
+    /// «Comparar»: activa la vista paralela y se queda en ese versículo.
+    func compare(at verse: Int) {
+        pendingAnchor = verse
+        model.setParallel(on: true)
+        pendingAnchor = nil
+        flash(verse...verse)
+    }
+
     @objc private func parallelChanged() {
-        updateAnchorFromScroll()
+        if let p = pendingAnchor { model.scrolled(toVerse: p) } else { updateAnchorFromScroll() }
         render(scrollTo: model.anchorVerse)
     }
 
@@ -302,8 +385,11 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         guard let storage = textView.textStorage else { return }
         suppressScroll = true
         defer { suppressScroll = false }
-        let style = ReaderStyle(palette: palette, fontScale: settings.fontScale, latin: model.isLatin,
+        var style = ReaderStyle(palette: palette, fontScale: settings.fontScale, latin: model.isLatin,
                                 perVerse: settings.layout == .perLine)
+        style.annotations = annotations.chapter
+        structSig = Self.signature(style.annotations)
+        primaryEnds = Dictionary(model.items.map { ($0.number, $0.endNumber) }, uniquingKeysWith: { a, _ in a })
         let b: BuiltChapter
         if mode == .glosses {
             let fallback = model.parallel.layout == .columns      // ventana estrecha: glosas = versiones activas
@@ -313,18 +399,21 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
             let rows = model.rows(for: ids)
             if rows.isEmpty { showMessagePage(storage); return }
             copyRows = rows; copyColumns = model.columnInfos(ids)
+            annotations.rows = rows.map(\.number); annotations.rowsAreExact = true
             let groups = GlossBuilder.groups(rows: rows, blocks: model.blocks(), columns: copyColumns, showGlosses: showGl)
             b = GlossAttributedBuilder.build(title: model.chapterTitle, groups: groups, style: style,
                                              notice: !fallback && model.parallel.glossesOn && model.glossIds.isEmpty)
         } else {
             if model.items.isEmpty { showMessagePage(storage); return }
+            annotations.rows = model.items.map(\.number); annotations.rowsAreExact = false
             b = ChapterAttributedBuilder.build(title: model.chapterTitle, blocks: model.blocks(), style: style)
         }
         built = b
         storage.setAttributedString(b.text)
-        applyOverlays(storage, built: b, id: model.translationId, strong: model.settings.strongMode)
+        applyOverlays(storage, built: b, id: model.translationId, strong: model.settings.strongMode, ends: primaryEnds)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         scrollToVerse(verse ?? 1)
+        updateBar(reveal: false)
     }
 
     private func renderColumns(scrollTo verse: Int?) {
@@ -346,7 +435,15 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
         let n = CGFloat(infos.count)
         let colW = (W - 48) / n
         let inner = colW - 28
-        let bc = ColumnsAttributedBuilder.build(rows: rows, columns: infos, palette: palette, fontScale: settings.fontScale, innerWidth: inner)
+        let ann = annotations.chapter
+        structSig = Self.signature(ann)
+        annotations.rows = rows.map(\.number); annotations.rowsAreExact = true
+        columnEnds = infos.indices.map { ci in
+            var d: [Int: Int] = [:]
+            for r in rows { if case .verse(let v)? = r.cells[safe: ci] { d[r.number] = v.endNumber } }
+            return d
+        }
+        let bc = ColumnsAttributedBuilder.build(rows: rows, columns: infos, palette: palette, fontScale: settings.fontScale, innerWidth: inner, annotations: ann)
         builtCols = bc
         colHeader.set(columns: infos, palette: palette)
         colDoc.frame = NSRect(x: 0, y: 0, width: W, height: max(bc.totalHeight, colScroll.contentSize.height))
@@ -366,6 +463,7 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
             tv.onPrev = { [weak self] in self?.model.goPrev() }
             tv.onNext = { [weak self] in self?.model.goNext() }
             tv.onZoomIn = { [weak self] in self?.settings.stepFont(1) }
+            wire(tv)
             colDoc.addSubview(tv)
             colViews.append(tv)
         }
@@ -377,27 +475,118 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
             tv.setAccessibilityLabel("\(c.id), \(languageLabel(c.language))")
             tv.textStorage?.setAttributedString(c.text)
             if let st = tv.textStorage {
-                applyOverlays(st, ranges: c.verseRanges, id: c.id, strong: model.settings.strongMode)
+                applyOverlays(st, ranges: c.verseRanges, id: c.id, strong: model.settings.strongMode, ends: columnEnds[safe: i] ?? [:])
             }
             tv.setSelectedRange(NSRange(location: 0, length: 0))
         }
         colDoc.needsDisplay = true
         scrollToVerse(verse ?? 1)
+        updateBar(reveal: false)
     }
 
     // MARK: overlays (Strong, resaltado de búsqueda)
 
-    private func applyOverlays(_ storage: NSTextStorage, built b: BuiltChapter, id: String, strong: Bool) {
-        applyOverlays(storage, ranges: b.verseRanges, id: id, strong: strong)
+    private func applyOverlays(_ storage: NSTextStorage, built b: BuiltChapter, id: String, strong: Bool, ends: [Int: Int]) {
+        applyOverlays(storage, ranges: b.verseRanges, id: id, strong: strong, ends: ends)
     }
 
-    private func applyOverlays(_ storage: NSTextStorage, ranges: [Int: NSRange], id: String, strong: Bool) {
+    private func applyOverlays(_ storage: NSTextStorage, ranges: [Int: NSRange], id: String, strong: Bool, ends: [Int: Int]) {
         if strong, model.hasStrongs(id) {
             ReaderOverlays.applyStrong(to: storage, ranges: ranges, spans: model.strongSpans(for: id),
                                        verseText: { [model] in model.verseText(id, verse: $0) }, palette: palette)
         }
+        paintBackgrounds(storage, ranges: ranges, id: id, ends: ends)
+    }
+
+    /// Fondos: resaltados (por referencia, en cualquier versión), selección (mezclada) y, encima, búsqueda.
+    private func paintBackgrounds(_ storage: NSTextStorage, ranges: [Int: NSRange], id: String, ends: [Int: Int]) {
+        let ch = annotations.chapter
+        AnnotationOverlays.applyBackgrounds(to: storage, ranges: ranges, selected: annotations.selectedRows,
+                                            annotations: { ch.forDisplayVerse(number: $0, end: ends[$0]) }, palette: palette)
         if !model.highlightTerms.isEmpty, model.highlightTranslation == id {
             ReaderOverlays.applyHighlight(to: storage, ranges: ranges, terms: model.highlightTerms, palette: palette)
+        }
+    }
+
+    /// Repinta resaltados y selección sin reconstruir el texto (no mueve el desplazamiento).
+    private func refreshBackgrounds() {
+        if mode == .columns {
+            guard let bc = builtCols else { return }
+            for (i, tv) in colViews.enumerated() {
+                guard let st = tv.textStorage, let c = bc.columns[safe: i] else { continue }
+                paintBackgrounds(st, ranges: c.verseRanges, id: c.id, ends: columnEnds[safe: i] ?? [:])
+                tv.setNeedsDisplay(tv.bounds)
+            }
+        } else if let b = built, let st = textView.textStorage {
+            paintBackgrounds(st, ranges: b.verseRanges, id: model.translationId, ends: primaryEnds)
+            textView.setNeedsDisplay(textView.bounds)
+        }
+    }
+
+    static func signature(_ a: ChapterAnnotations) -> String {
+        "b" + a.bookmarks.sorted().map(String.init).joined(separator: ",")
+            + "n" + a.notes.map { "\($0.id):\($0.verseStart)-\($0.verseEnd)" }.joined(separator: ",")
+    }
+
+    @objc private func selectionChanged() {
+        refreshBackgrounds()
+        updateBar(reveal: true)
+    }
+
+    @objc private func annotationsChanged() {
+        if Self.signature(annotations.chapter) == structSig {
+            refreshBackgrounds()
+            updateBar(reveal: false)
+        } else {
+            rerenderKeepingScroll()
+        }
+    }
+
+    private func rerenderKeepingScroll() {
+        let clip = (mode == .columns ? colScroll : scrollView).contentView
+        let y = clip.bounds.minY
+        render(scrollTo: model.anchorVerse)
+        let c2 = (mode == .columns ? colScroll : scrollView).contentView
+        let doc = (mode == .columns ? colScroll.documentView : scrollView.documentView)?.frame.height ?? 0
+        suppressScroll = true
+        c2.scroll(to: NSPoint(x: 0, y: min(y, max(0, doc - c2.bounds.height))))
+        (mode == .columns ? colScroll : scrollView).reflectScrolledClipView(c2)
+        suppressScroll = false
+    }
+
+    // MARK: barra de acciones
+
+    func barState() -> VerseMenuState {
+        commands?.menuState(scope: nil) ?? VerseMenuState(context: VerseActionContext(selectedCount: annotations.selection.count))
+    }
+
+    private func updateBar(reveal: Bool) {
+        let shown = barShown
+        let was = !bar.isHidden
+        let oldH = bar.frame.height
+        bar.isHidden = !shown
+        if shown { bar.update(state: barState(), activeColor: annotations.highlightColor(), palette: palette) }
+        layoutFrames()
+        bar.needsLayout = true
+        if shown, reveal || !was || abs(oldH - bar.frame.height) > 0.5, let v = annotations.selection.anchor { ensureVisible(v) }
+    }
+
+    /// Desplaza lo justo para que el versículo quede a la vista sobre la barra.
+    private func ensureVisible(_ v: Int) {
+        suppressScroll = true
+        defer { suppressScroll = false }
+        if mode == .columns {
+            guard let bc = builtCols, let i = bc.rowNumbers.firstIndex(of: v) else { return }
+            colDoc.scrollToVisible(NSRect(x: 0, y: bc.rowTops[i], width: 1, height: bc.rowHeights[i]))
+        } else if let r = built?.verseRanges[v] {
+            textView.scrollRangeToVisible(NSRange(location: r.location, length: min(r.length, 1)))
+            if let lm = textView.layoutManager, let tc = textView.textContainer, r.length > 0 {
+                let g = lm.glyphIndexForCharacter(at: min(NSMaxRange(r) - 1, max(0, (built?.text.length ?? 1) - 1)))
+                var rect = lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil)
+                rect.origin.y += textView.textContainerOrigin.y
+                _ = tc
+                textView.scrollToVisible(rect)
+            }
         }
     }
 
@@ -532,40 +721,73 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
 
     func hideMessage() { messageTimer?.invalidate(); messageLabel.isHidden = true }
 
-    /// ⌥⌘C: copia los versículos de la selección con su referencia (en paralela, una línea por versión visible).
-    func copyWithReference() {
-        let text: String?
+    /// Filas tocadas por la selección de TEXTO (arrastre del ratón) o por el cursor; vacío si no hay.
+    private func textSelectionRows() -> Set<Int> {
+        switch mode {
+        case .single, .glosses:
+            guard let b = built else { return [] }
+            return Set(b.verses(intersecting: textView.selectedRange()))
+        case .columns:
+            guard let bc = builtCols else { return [] }
+            return bc.rows(intersecting: colViews.enumerated().map { (column: $0.offset, range: $0.element.selectedRange()) })
+        }
+    }
+
+    /// Hay texto seleccionado con el ratón en alguna vista del lector.
+    var hasTextSelection: Bool {
+        mode == .columns ? colViews.contains { $0.selectedRange().length > 0 } : textView.selectedRange().length > 0
+    }
+
+    /// Texto de los versículos `selected` (filas): con o sin referencia. En paralela, una línea por versión visible.
+    func verseCopyText(rows selected: Set<Int>, reference: Bool) -> String? {
+        guard !selected.isEmpty else { return nil }
+        let names: (Int, String) -> String = { [model] n, lang in model.bookName(n, language: lang) }
+        let cols = copyColumns.map { (id: $0.id, language: $0.language) }
         switch mode {
         case .single:
-            guard let b = built else { return }
-            let nums = Set(b.verses(intersecting: textView.selectedRange()))
-            let vs = model.items.filter { nums.contains($0.number) }
-            text = vs.isEmpty ? nil : CopyFormatter.format(verses: vs, bookName: model.bookName(model.book, language: model.bookNameLanguage),
-                                         chapter: model.chapter, translationId: model.translationId, language: model.language)
+            let vs = model.items.filter { selected.contains($0.number) }
+            guard !vs.isEmpty else { return nil }
+            return reference
+                ? CopyFormatter.format(verses: vs, bookName: model.bookName(model.book, language: model.bookNameLanguage),
+                                       chapter: model.chapter, translationId: model.translationId, language: model.language)
+                : PlainCopy.text(verses: vs, language: model.language)
         case .glosses:
-            guard let b = built else { return }
-            let nums = Set(b.verses(intersecting: textView.selectedRange()))
-            text = GlossBuilder.copyText(rows: copyRows, selected: nums, book: model.book, chapter: model.chapter,
-                                         columns: copyColumns, showGlosses: true,
-                                         bookName: { [model] n, lang in model.bookName(n, language: lang) })
+            return reference
+                ? GlossBuilder.copyText(rows: copyRows, selected: selected, book: model.book, chapter: model.chapter,
+                                        columns: copyColumns, showGlosses: true, bookName: names)
+                : PlainCopy.text(rows: copyRows, selected: selected, columns: cols)
         case .columns:
-            guard let bc = builtCols else { return }
-            let sel = colViews.enumerated().map { (column: $0.offset, range: $0.element.selectedRange()) }
-            let nums = bc.rows(intersecting: sel)
-            text = ParallelCopy.format(rows: copyRows, selected: nums, book: model.book, chapter: model.chapter,
-                                       columns: copyColumns, bookName: { [model] n, lang in model.bookName(n, language: lang) })
+            return reference
+                ? ParallelCopy.format(rows: copyRows, selected: selected, book: model.book, chapter: model.chapter,
+                                      columns: copyColumns, bookName: names)
+                : PlainCopy.text(rows: copyRows, selected: selected, columns: cols)
         }
-        guard let s = text, !s.isEmpty else { NSSound.beep(); showMessage("Selecciona texto del capítulo para copiarlo con referencia."); return }
+    }
+
+    /// Copia al portapapeles los versículos del ámbito (selección, o el del clic derecho).
+    func copyVerses(scope: Set<Int>?, reference: Bool) {
+        var sel = scope ?? annotations.selectedRows
+        if sel.isEmpty { sel = textSelectionRows() }          // ⌥⌘C sin versículos marcados: la selección de texto
+        guard let s = verseCopyText(rows: sel, reference: reference), !s.isEmpty else {
+            NSSound.beep(); showMessage("Selecciona uno o más versículos (clic en ellos) para copiarlos."); return
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(s, forType: .string)
-        showMessage("Copiado con referencia")
+        showMessage(reference ? "Copiado con referencia" : "Copiado")
     }
+
+    /// ⌥⌘C: copia los versículos seleccionados con su referencia (en paralela, una línea por versión visible).
+    func copyWithReference() { copyVerses(scope: nil, reference: true) }
+
+    /// Versículo que se debe ver al abrir una nota: lo hace la ventana principal.
+    func flashVerses(_ verses: ClosedRange<Int>) { flash(verses) }
 
     // MARK: NSTextViewDelegate
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         if "\(link)" == "biblia://glosas" { onOpenVersions?(); return true }
         let url = (link as? URL) ?? URL(string: "\(link)")
+        if let u = url, let id = NoteLink.parse(u) { onOpenNote?(id); return true }
         if let u = url, let sel = StrongLink.parse(u) {
             let id: String
             if let i = colViews.firstIndex(where: { $0 === textView }), let c = builtCols?.columns[safe: i] { id = c.id }

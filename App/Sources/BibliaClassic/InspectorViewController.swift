@@ -7,6 +7,10 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
     enum Tab: Int { case strong = 0, note = 1, refs = 2 }
 
     let model: ReaderModel
+    let annotations: AnnotationsModel
+    let noteEditor: NoteEditorModel
+    private(set) var noteTab: NoteTabView!
+    var onRequestNote: (() -> Void)?
     private let settings: ClassicSettings
     private let tabs = NSSegmentedControl(labels: ["Strong", "Nota", "Referencias"], trackingMode: .selectOne, target: nil, action: nil)
     private let scroll = NSScrollView()
@@ -22,8 +26,8 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
     /// Navega a una referencia (referencia, versión opcional).
     var onNavigate: ((BibleRef, String?) -> Void)?
 
-    init(model: ReaderModel, settings: ClassicSettings) {
-        self.model = model; self.settings = settings
+    init(model: ReaderModel, settings: ClassicSettings, annotations: AnnotationsModel, noteEditor: NoteEditorModel) {
+        self.model = model; self.settings = settings; self.annotations = annotations; self.noteEditor = noteEditor
         super.init(nibName: nil, bundle: nil)
         if let db = model.bible {
             strongModel = StrongInspectorModel(lexicon: LexiconRepository(db: db))
@@ -38,8 +42,6 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
         tabs.target = self
         tabs.action = #selector(tabPicked(_:))
         tabs.selectedSegment = 0
-        tabs.setEnabled(false, forSegment: Tab.note.rawValue)       // la pestaña Nota llega en L4
-        tabs.setToolTip("Las notas llegan en la siguiente versión", forSegment: Tab.note.rawValue)
         tabs.setAccessibilityLabel("Pestañas del inspector")
         tabs.translatesAutoresizingMaskIntoConstraints = false
 
@@ -61,8 +63,13 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
         scroll.autohidesScrollers = true
         scroll.borderType = .noBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        noteTab = NoteTabView(editor: noteEditor, reader: model, annotations: annotations)
+        noteTab.translatesAutoresizingMaskIntoConstraints = false
+        noteTab.isHidden = true
+        noteTab.onRequestNote = { [weak self] in self?.onRequestNote?() }
         root.addSubview(tabs)
         root.addSubview(scroll)
+        root.addSubview(noteTab)
         NSLayoutConstraint.activate([
             tabs.topAnchor.constraint(equalTo: root.topAnchor, constant: 10),
             tabs.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 10),
@@ -71,6 +78,10 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            noteTab.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),
+            noteTab.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            noteTab.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            noteTab.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         view = root
         let nc = NotificationCenter.default
@@ -88,6 +99,7 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
         text.backgroundColor = palette.background
         scroll.scrollerKnobStyle = palette.isDark ? .light : .default
         text.selectedTextAttributes = [.backgroundColor: palette.selection, .foregroundColor: palette.textPrimary]
+        noteTab?.applyPalette(palette)
     }
 
     @objc private func themeChanged() { applyPalette(); render() }
@@ -96,15 +108,32 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
         render()
     }
     @objc private func tabPicked(_ s: NSSegmentedControl) {
-        tab = Tab(rawValue: s.selectedSegment) ?? .strong
-        render()
+        setTab(Tab(rawValue: s.selectedSegment) ?? .strong)
     }
 
     func select(_ t: Tab) {
-        tab = t
         tabs.selectedSegment = t.rawValue
+        setTab(t)
+    }
+
+    private func setTab(_ t: Tab) {
+        if tab == .note, t != .note { noteEditor.flush() }       // cambiar de pestaña guarda la nota
+        tab = t
+        if t == .refs, refsSource == nil || selectionRefsStale(), let r = annotations.range() {
+            refsSource = (model.book, model.chapter, Array(r)); refsLimit = CrossRefList.pageSize; reloadRefs()
+        }
         render()
     }
+
+    private func selectionRefsStale() -> Bool {
+        guard let r = annotations.range(), let s = refsSource else { return false }
+        return s.book != model.book || s.chapter != model.chapter || s.verses != Array(r)
+    }
+
+    /// Guarda la nota pendiente (cerrar el inspector, cerrar la ventana, salir).
+    func flushNote() { noteEditor.flush() }
+
+    func focusNoteEditor() { noteTab?.focusEditor() }
 
     // MARK: Strong
 
@@ -119,11 +148,11 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
 
     // MARK: Referencias
 
-    func showRefs(book: Int, chapter: Int, verses: [Int]) {
+    func showRefs(book: Int, chapter: Int, verses: [Int], switchTab: Bool = true) {
         refsSource = (book, chapter, verses)
         refsLimit = CrossRefList.pageSize
         reloadRefs()
-        select(.refs)
+        if switchTab { select(.refs) } else { render() }
         text.scrollToBeginningOfDocument(nil)
     }
 
@@ -147,6 +176,9 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
 
     func render() {
         guard isViewLoaded, let st = text.textStorage else { return }
+        scroll.isHidden = tab == .note
+        noteTab.isHidden = tab != .note
+        if tab == .note { noteTab.sync(); return }
         let a: NSAttributedString
         switch tab {
         case .strong:
@@ -158,7 +190,7 @@ final class InspectorViewController: NSViewController, NSTextViewDelegate {
                           "Activa el modo Strong (⌥⌘S) en una versión con numeración Strong (KJV) y pulsa una palabra con subrayado punteado.")
             }
         case .note:
-            a = empty("Notas", "Las notas llegan en la siguiente versión.")
+            a = NSAttributedString()
         case .refs:
             if let c = refsContent {
                 a = RefsTextBuilder.build(c, translationId: model.translationId, palette: palette)

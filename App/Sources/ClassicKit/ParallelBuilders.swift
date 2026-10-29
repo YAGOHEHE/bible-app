@@ -60,11 +60,15 @@ public enum ColumnsAttributedBuilder {
     }
 
     /// Texto de una celda (sin salto final). Atributo `.bibliaVerse` = número de fila.
-    static func cell(_ c: ParallelCell, row: Int, latin: Bool, pt: CGFloat, pal: ReaderPalette, ps: NSParagraphStyle) -> NSAttributedString {
-        let body = ReaderFonts.reading(latin: latin, size: pt)
+    static func cell(_ c: ParallelCell, row: Int, latin: Bool, pt: CGFloat, pal: ReaderPalette, ps: NSParagraphStyle,
+                     annotations: ChapterAnnotations = ChapterAnnotations(), shownNotes: inout Set<Int64>) -> NSAttributedString {
         let kern: CGFloat = latin ? 0 : pt * 0.02
         let out = NSMutableAttributedString()
+        var endNumber = row
+        if case .verse(let v) = c { endNumber = max(row, v.endNumber) }
+        let ann = annotations.forDisplayVerse(number: row, end: endNumber)
         func number(_ label: String, color: NSColor) {
+            if ann.isBookmarked { out.append(AnnotationOverlays.bookmarkFlag(verse: row, pt: pt, palette: pal, paragraph: ps)) }
             out.append(NSAttributedString(string: label + "\u{2009}", attributes: [
                 .font: ReaderFonts.verseNumber(size: pt * 0.62), .foregroundColor: color, .baselineOffset: pt * 0.38,
                 .paragraphStyle: ps, .bibliaVerse: row, .bibliaVerseNumber: true]))
@@ -75,11 +79,13 @@ public enum ColumnsAttributedBuilder {
             if kern != 0 { a[.kern] = kern }
             out.append(NSAttributedString(string: t, attributes: a))
         }
-        _ = body
         switch c {
         case .verse(let v):
             number(v.label, color: pal.verseNumber)
             text(v.text.trimmingCharacters(in: .whitespacesAndNewlines), color: pal.textPrimary, size: pt)
+            for n in AnnotationOverlays.newNotes(ann, shown: &shownNotes) {
+                out.append(AnnotationOverlays.noteIcon(noteId: n.id, verse: row, pt: pt, palette: pal, paragraph: ps))
+            }
         case .covered(let v):
             number("\(row)", color: pal.textMuted)
             text("↑ (\(v.label))", color: pal.textMuted, size: pt * 0.9)
@@ -91,7 +97,7 @@ public enum ColumnsAttributedBuilder {
     }
 
     public static func build(rows: [ParallelRow], columns: [(id: String, language: String)], palette pal: ReaderPalette,
-                             fontScale: Double, innerWidth: CGFloat) -> BuiltColumns {
+                             fontScale: Double, innerWidth: CGFloat, annotations: ChapterAnnotations = ChapterAnnotations()) -> BuiltColumns {
         let pt = ReaderStyle.baseSize * CGFloat(fontScale)
         let storage = NSTextStorage(), lm = NSLayoutManager()
         let tc = NSTextContainer(containerSize: NSSize(width: max(40, innerWidth), height: CGFloat.greatestFiniteMagnitude))
@@ -108,10 +114,12 @@ public enum ColumnsAttributedBuilder {
         // 1) cada celda y su altura natural
         var cells: [[NSAttributedString]] = columns.indices.map { _ in [] }
         var heights: [[CGFloat]] = columns.indices.map { _ in [] }
+        var shown = columns.indices.map { _ in Set<Int64>() }
         for r in rows {
             for ci in columns.indices {
                 let c = r.cells[safe: ci] ?? .missing
-                let a = cell(c, row: r.number, latin: latin(ci), pt: pt, pal: pal, ps: paragraph(lineSpacing: spacing(ci), after: 0))
+                let a = cell(c, row: r.number, latin: latin(ci), pt: pt, pal: pal, ps: paragraph(lineSpacing: spacing(ci), after: 0),
+                             annotations: annotations, shownNotes: &shown[ci])
                 cells[ci].append(a)
                 // usedRect no cuenta el interlineado de la última línea, pero el layout real sí lo suma antes del párrafo siguiente
                 heights[ci].append(measure(a) + spacing(ci))
@@ -200,7 +208,7 @@ public enum GlossAttributedBuilder {
             ps.paragraphSpacingBefore = i == 0 ? s.pt * 0.1 : 0
             ps.paragraphSpacing = i == g.glosses.count - 1 ? s.pt * 0.3 : s.pt * 0.06
             ps.lineBreakMode = .byWordWrapping
-            let base: [NSAttributedString.Key: Any] = [.paragraphStyle: ps, .bibliaVerse: g.number]
+            let base: [NSAttributedString.Key: Any] = [.paragraphStyle: ps, .bibliaVerse: g.number, .bibliaGloss: true]
             func add(_ t: String, _ extra: [NSAttributedString.Key: Any]) {
                 out.append(NSAttributedString(string: t, attributes: base.merging(extra) { $1 }))
             }
