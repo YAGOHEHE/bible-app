@@ -134,7 +134,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         a.messageText = "¿Borrar todo el historial de lectura?"
         a.informativeText = "Se eliminarán todas las entradas. Esta acción no se puede deshacer."
         a.addButton(withTitle: "Borrar historial")
-        a.addButton(withTitle: "Cancelar")
+        a.addButton(withTitle: "Cancelar").keyEquivalent = "\u{1b}"     // Esc cancela
         a.alertStyle = .warning
         a.beginSheetModal(for: w) { [weak self] resp in
             guard resp == .alertFirstButtonReturn else { return }

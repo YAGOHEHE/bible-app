@@ -41,3 +41,11 @@ bundle id `org.biblia.clasica`; mismo `bible.sqlite`.
 - **L4 Anotaciones**: clic → barra de acciones, resaltados, marcadores, notas Markdown, panel Notas, menú contextual.
 - **L5 Entrega**: `Biblia-Clasica-1.1.0.dmg`, guía `INSTALAR-CLASICA.md` (10.13: clic derecho → Abrir),
   checklist de prueba para un Mac antiguo real, merge de `BibliaCore` a `main`.
+
+## Estado (2026-10-29): L0–L5 hechas
+- **L0** BibliaCore separado; compila 10.13 x86_64 + arm64; app universal con runtime Swift incrustado. **L1** lector, temas, tamaño, ir a, retomar.
+  **L2** columnas y glosas, gestor de versiones. **L3** búsqueda, Strong, referencias, historial. **L4** selección acumulativa, barra de acciones,
+  resaltados, marcadores, notas, panel Notas. **L5** `scripts/make_classic_dmg.sh` -> `build/Biblia-Clasica-1.1.2.dmg` (UDZO, ~124 MB),
+  `INSTALAR-CLASICA.md`, `PRUEBA-MAC-ANTIGUO.md`, Esc = Cancelar en el aviso de borrar historial, línea de arranque `SQLite … upsert … fts5-trigram …` (NSLog).
+- 200 tests en verde; la app moderna no cambia.
+- **Abierto: prueba en Mac real** (10.13/10.14/10.15 Intel) siguiendo `PRUEBA-MAC-ANTIGUO.md`. Hasta entonces la compatibilidad 10.13 solo está verificada estáticamente (vtool/otool/lipo) y en Rosetta/macOS 14.

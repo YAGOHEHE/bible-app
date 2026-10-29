@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     private var headingsItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSLog("Biblia Clásica %@ — %@", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?", SQLiteProbe.run().summary)
         settings = ClassicSettings()
         let user = (try? UserStore.defaultURL(folder: "Biblia Clásica")).flatMap { try? UserStore(path: $0.path) }
         model = ReaderModel(settings: settings, user: user)
