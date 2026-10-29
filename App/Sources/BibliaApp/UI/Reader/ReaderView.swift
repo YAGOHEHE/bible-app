@@ -209,7 +209,8 @@ struct BlockView: View {
             .lineSpacing(theme.lineSpacing(latin: latin))
             .tracking(latin ? 0 : theme.pt * 0.02)
             .tint(theme.palette.verseNumber)
-            .textSelection(.enabled)
+            // Sin .textSelection: en macOS convierte el clic en selección de letras y los enlaces
+            // verse:// (clic → seleccionar versículo + barra de acciones) dejan de recibirse.
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, indent)
             .contentShape(Rectangle())

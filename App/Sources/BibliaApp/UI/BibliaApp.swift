@@ -144,6 +144,8 @@ struct ReaderCommands: Commands {
         CommandMenu("Versículo") {
             Button("Copiar con referencia") { state.perform(.copyReference) }
                 .keyboardShortcut("c", modifiers: [.command, .option]).disabled(!state.isEnabled(.copyReference))
+            Button("Deseleccionar todo") { state.clearSelection() }
+                .keyboardShortcut("a", modifiers: [.command, .shift]).disabled(state.selectedVerses.isEmpty)
             Divider()
             Button("Resaltar con el último color") { state.perform(.highlight) }
                 .keyboardShortcut("h", modifiers: [.command, .option]).disabled(!state.isEnabled(.highlight))
