@@ -32,3 +32,35 @@ Hooks de prueba añadidos en `UI/BibliaApp.swift` (solo argumentos de arranque):
 | F10-H1 | F10 | feliz | copiar con formato | texto con referencia | unit (copyFormat, copyJohn316InThreeLanguages) | pasa; selección + ⌘C NO ejercitados |
 
 Restauración: defaults y user.sqlite reales respaldados en /tmp y restaurados al terminar.
+
+## v1.1 (Ola C)
+
+Build: `build/Biblia.app` 1.1.0 (release ad-hoc). Automáticas: `cd App && swift test` (110 tests, 0 known issues) y `python3 data/test_bundle.py`. Manuales: argumentos de arranque `-startTranslation`, `-startGoto`, `-selectVerse 16`, `-annotate "16:yellow,17:bookmark,18:note"`, `-openNote "Rom 8:28"`, `-notePreview 1`, `-showRefs "John 3:16"`, `-sidebar notes`, `-startParallel YES/NO`, `-windowWidth/-windowHeight`, más `defaults write org.biblia.lector set.theme light|dark|sepia` y `set.fontScale -float 0.8|2.0` (con la app cerrada), capturas con `screencapture -o -l <windowID>` en `replica/screens/v11-test-*.png`. Accesibilidad denegada: no se pudo hacer clic, clic derecho ni teclear; esos pasos se cubren con unit tests de la lógica (`VerseActionTests`, `NotesTests`, `AnnotationTests`).
+
+| caso | flujo | tipo | pasos | esperado | auto | resultado |
+| --- | --- | --- | --- | --- | --- | --- |
+| F11-H1 | F11 | feliz | seleccionar Jn 3:16 | barra con Copiar, Con ref., Anotar, Marcador, Referencias (23), Comparar, Strong y 5 colores | unit (actionsDependOnSelectionAndTranslation, strongAndCompareFromBar) + captura F12-highlight-parallel / theme-light-annot | pasa; clic real no ejercitado |
+| F11-E1 | F11 | borde | versión sin Strong (CUV) | «Strong» no aparece | captura font200 (CUV) y unit | pasa |
+| F11-E2 | F11 | borde | ventana 800 px + inspector; 80 % y 200 % | barra legible, sin cortes | capturas narrow-actionbar, font80/200 | pasa con BUG-V11-02 (tapa texto/inspector) |
+| F11-H2 | F11 | feliz | menú Versículo (⌥⌘C, ⌥⌘H, ⌥⌘N, ⌘D) y menú contextual | acciones según contexto | unit (menuEnablementMatchesContext, contextMenuScopeOutsideSelection, copyPlainAndReferenceForSelection) | pasa; atajos no pulsados |
+| F12-H1 | F12 | feliz | resaltar v16 en amarillo | visible en KJV, RV1909 y columna CUV | unit (highlightShowsInEveryTranslation) + capturas F12-highlight-parallel, F12-parallel-cuv, F12-parallel-light-zh | pasa |
+| F12-E1 | F12 | borde | versículo fusionado | hereda cualquier resaltado | unit (mergedVerseShowsAnyOfItsHighlights) | pasa |
+| F12-H2 | F12 | feliz | marcador en v17 | bandera naranja en el texto y en las 3 columnas | capturas F12-parallel-cuv, theme-*-annot + unit (bookmarkToggleOverSet) | pasa |
+| F13-H1 | F13 | feliz | crear nota en Rom 8:28 | icono en el texto, pestaña Nota con la cita, «Guardada», fecha en español | unit (autosaveIsDebounced, severalNotesPerRangeAndSelection) + capturas F13-note-editor, F13-note-preview | pasa |
+| F13-E1 | F13 | borde | cuerpo vacío / cambio de pestaña / eliminar | no crea nota vacía; guarda al salir; elimina | unit (emptyBodyDeletesAndNeverCreates, flushSavesOnTabSwitchAndLoad, deleteSelectedFlow) | pasa; teclear en vivo no ejercitado |
+| F13-E2 | F13 | borde | Markdown inválido | vista previa nunca falla | unit (markdownPreviewNeverThrows) | pasa |
+| F14-H1 | F14 | feliz | pestaña Referencias de Jn 3:16 | 23 referencias por votos con fragmento | unit (realDataJohn316, mergeOrdersByVotesAndDedupes) + captura F14-refs | pasa; clic para navegar no ejercitado (la lógica de navegación va por `goTo`) |
+| F14-E1 | F14 | borde | destino ausente en la versión | fila sin romper | unit (rowsHandleMissingTargetVerses) | pasa |
+| F15-H1 | F15 | feliz | panel Notas con 4-7 elementos | contadores Todo/Notas/Resaltados/Marcadores, orden bíblico, buscador | captura F15-notes-panel, theme-light-annot, theme-sepia-annot + unit (countsAndKindFilters, colorBookAndTextFilters, sortOrders) | pasa |
+| F15-E1 | F15 | borde | actualizar tras cambios | lista refleja altas/bajas | unit (refreshAfterMutation, appStateBumpsVersionOnAnnotationChanges) | pasa |
+| F15-E2 | F15 | borde | fechas con región distinta a la de la app | español | unit (DateTextTests) + captura | pasa tras BUG-V11-01 |
+| F17-H1 | F17 | feliz | gestor de versiones con 8 versiones | CUV, RV1909, KJV, ASV, CUVT, BSB, WEB, BLM; aviso si hay más de 3 activas | captura F17-versions + unit (newTranslationsPresent) | pasa |
+| F18-H1 | F18 | feliz | BLM (español), CUVT (繁體), BSB y WEB | texto en su idioma/escritura; 66 libros | unit (newTextsHaveTheirOwnScriptAndLanguage) + capturas F18-blm-es, F18-cuvt-trad, F18-bsb-web | pasa; BUG-V11-03 (nombres de libro CUVT en simplificado) |
+| F19-H1 | F19 | feliz | icono de cruz | Finder/Dock | captura icon-cross-1024 / 32 / 16; el empaquetado copia `Biblia.icns` | pasa en el paquete (Dock no capturado) |
+| F20-H1 | F20 | migración | base v1.0 (solo `history` y `search_history`) | se abre, conserva historial y búsquedas y añade las tablas nuevas | unit (V10ToV11MigrationTests, migrationV2PreservesV1) + prueba real con la base de usuario de v1.0 (12 entradas, 1 búsqueda → intactas, `integrity_check` ok) | pasa |
+| F20-E1 | F20 | borde | reabrir | las migraciones no se repiten | unit (V10ToV11MigrationTests) | pasa |
+| F21-H1 | F21 | tema | claro, oscuro, sepia con barra, notas, marcadores | contraste y colores de resaltado legibles | capturas theme-light-annot, theme-sepia-annot, F12-* (oscuro) | pasa |
+| F21-E1 | F21 | borde | 80 % y 200 % con anotaciones | sin cortes | capturas font80-annot, font200-annot | pasa |
+| F22-H1 | F22 | rendimiento | arranque con 240 MB de datos | ventana rápida | medición: 0,27 s en caliente, 3,0 s en frío | pasa |
+
+Restauración: defaults (`org.biblia.lector`) y `user.sqlite` reales respaldados en /tmp y restaurados al terminar (comprobado byte a byte: la base con SHA-1 idéntico; defaults idénticos tras borrar las claves `ann.lastColor` y `set.theme` que añadieron las pruebas).

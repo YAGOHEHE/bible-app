@@ -167,7 +167,7 @@ private struct AnnotationRow: View {
 
     var body: some View {
         let ref = state.referenceLabel(for: item)
-        let date = Date(timeIntervalSince1970: item.updatedAt).formatted(date: .abbreviated, time: .omitted)
+        let date = DateText.date(item.updatedAt)
         let title = item.kind == .note ? (item.noteId.flatMap { _ in Self.title(item.body ?? "") }) : nil
         HStack(alignment: .top, spacing: 8) {
             icon.frame(width: 18, height: 18).padding(.top, 1)

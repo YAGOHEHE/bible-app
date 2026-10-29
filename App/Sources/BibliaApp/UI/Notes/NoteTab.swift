@@ -42,7 +42,7 @@ struct NoteTab: View {
     }
 
     private func date(_ t: Double) -> String {
-        Date(timeIntervalSince1970: t).formatted(date: .abbreviated, time: .shortened)
+        DateText.dateTime(t)
     }
 
     @ViewBuilder private func content(_ m: NoteEditorModel) -> some View {

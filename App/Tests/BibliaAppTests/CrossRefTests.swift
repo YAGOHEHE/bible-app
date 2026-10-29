@@ -41,4 +41,19 @@ import Foundation
             #expect(v != nil, "Jn 3:16 en \(t)")
         }
     }
+
+    @Test(.enabled(if: BibleDatabase.bundledPath() != nil, "bible.sqlite no presente"))
+    func newTextsHaveTheirOwnScriptAndLanguage() throws {
+        let db = try BibleDatabase(path: try #require(BibleDatabase.bundledPath()))
+        let repo = VerseRepository(db: db)
+        func john316(_ t: String) throws -> String { try #require(try repo.chapter(translationId: t, book: 43, chapter: 3).first { $0.verse == 16 }).text }
+        let cuvt = try john316("CUVT"), cuv = try john316("CUV")
+        #expect(cuvt.contains("愛") && !cuvt.contains("爱"), "CUVT debe estar en caracteres tradicionales")
+        #expect(cuv.contains("爱") && !cuv.contains("愛"), "CUV debe seguir en simplificados")
+        #expect(try john316("BLM").contains("amó"))
+        #expect(try john316("BSB").contains("loved"))
+        // Cobertura completa de cada versión nueva (66 libros)
+        let n = try db.reader.read { try Int.fetchAll($0, sql: "SELECT COUNT(DISTINCT book) FROM verses WHERE translation_id IN ('CUVT','BSB','WEB','BLM') GROUP BY translation_id") }
+        #expect(n.count == 4 && n.allSatisfy { $0 == 66 })
+    }
 }

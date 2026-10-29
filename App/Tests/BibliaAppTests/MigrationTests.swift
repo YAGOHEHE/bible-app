@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import GRDB
 @testable import BibliaApp
 
 @Suite struct MigrationTests {
@@ -52,5 +53,55 @@ import Foundation
     @Test func noLegacyNoop() {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("mig-\(UUID())")
         #expect(!LegacyMigration.migrateUserData(legacyDir: root.appendingPathComponent("x"), newDir: root.appendingPathComponent("y")))
+    }
+}
+
+@Suite struct DateTextTests {
+    private var cal: Calendar { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "UTC")!; return c }
+    // 2026-10-29 07:53:00 UTC
+    private let t = 1_793_260_380.0
+
+    @Test func datesAreSpanishRegardlessOfSystemLocale() {
+        let d = DateText.date(t, calendar: cal)
+        #expect(d.contains("oct"), "esperado mes en español, fue \(d)")
+        #expect(d.contains("2026") && d.contains("29"))
+        #expect(!d.contains("年"))
+    }
+    @Test func dateTimeAndTime() {
+        #expect(DateText.dateTime(t, calendar: cal).contains("7:53") || DateText.dateTime(t, calendar: cal).contains("07:53"))
+        #expect(DateText.time(t, calendar: cal).contains(":53"))
+    }
+}
+
+@Suite struct V10ToV11MigrationTests {
+    /// Una base como la de la v1.0 (solo `history` y `search_history`, migración «v1») se abre con la v1.1 sin perder nada.
+    @Test func v10DatabaseKeepsHistoryAndGainsAnnotationTables() throws {
+        let path = NSTemporaryDirectory() + "v10-\(UUID()).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        do {
+            var m = DatabaseMigrator()
+            m.registerMigration("v1") { db in
+                try db.execute(sql: """
+                    CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, translation_id TEXT NOT NULL,
+                      book INTEGER NOT NULL, chapter INTEGER NOT NULL, verse INTEGER,
+                      kind TEXT NOT NULL CHECK (kind IN ('page','jump')), at REAL NOT NULL);
+                    CREATE INDEX history_at ON history(at DESC);
+                    CREATE TABLE search_history(query TEXT PRIMARY KEY, at REAL NOT NULL);
+                    INSERT INTO history(translation_id,book,chapter,verse,kind,at) VALUES ('KJV',43,3,16,'jump',1000),('CUV',1,1,NULL,'page',2000);
+                    INSERT INTO search_history VALUES ('amor', 5);
+                    """)
+            }
+            let q = try DatabaseQueue(path: path); try m.migrate(q)
+        }
+        let store = try UserStore(path: path)
+        #expect(try store.recentHistory().count == 2)
+        #expect(try store.recentSearches() == ["amor"])
+        let tables = try store.queue.read { try String.fetchAll($0, sql: "SELECT name FROM sqlite_master WHERE type='table'") }
+        #expect(tables.contains("highlights") && tables.contains("notes") && tables.contains("bookmarks"))
+        let ann = AnnotationStore(user: store, defaults: UserDefaults(suiteName: "t.\(UUID())")!)
+        _ = try ann.addNote(book: 43, chapter: 3, verseStart: 16, body: "hola")
+        #expect(try store.recentHistory().count == 2)
+        let again = try UserStore(path: path) // reabrir no repite migraciones
+        #expect(try again.recentHistory().count == 2)
     }
 }

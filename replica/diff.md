@@ -46,3 +46,34 @@ Publicar la v1 con lo ya construido: lector, selector y recientes, ir a referenc
 Antes de repartir (no son paridad, sino calidad): corregir lo que reporte TEST (`replica/bugs.md`), nombre/icono propios (replica-brand) y decidir firma/notarización.
 
 Para v1.1, por orden: marcadores/historial manual, resaltados y notas sencillas (lo que más echará de menos un grupo de estudio), copia con formato personalizable, y fuentes CJK/Latín elegibles. Dejar fuera de v1: cuentas, sincronización, red, comentarios y contenido con derechos de autor.
+
+---
+
+# Actualización v1.1 (Ola C)
+
+Método: `parity.py replica/features.csv` tras contrastar las filas v1.1 con el código y las pruebas (ver `replica/test-plan.md`, sección v1.1). Se añadió una fila (versiones de dominio público extra: CUVT, BSB, WEB, BLM) y no se tocó ninguna otra columna.
+
+## Puntuación v1.1
+
+| Nivel | Contadas | Puntuación |
+|---|---|---|
+| **Global** | 65 | **77,7 / 100** (v1.0: 73,6) |
+| must | 25 | 25/25 = **100 %** |
+| should | 13 | 9,0 / 13 = 69,2 % (sin cambios) |
+| could | 27 | 6,5 / 27 = 24,1 % (v1.0: 1,9 %) |
+
+Filas verificadas como hechas en v1.1: seleccionar versículos y copiar (barra, menú contextual, ⌘C / ⌥⌘C), historial manual/marcadores, referencias cruzadas (OpenBible, 343 k), notas con Markdown, búsqueda de notas, resaltados por color en todas las versiones, versiones extra de dominio público. Los 25 must siguen completos; la subida viene del bloque «could» que la 1.0 dejaba fuera.
+
+## Recomendaciones para la v1.2
+
+Por valor/coste para un grupo de estudio:
+1. **Planes de lectura importables** (por ejemplo el «Plan Lectura CCB»): progreso por día y desfase.
+2. **Exportar notas** a Markdown/PDF (las notas ya son Markdown).
+3. **Copia de seguridad de anotaciones** (fichero JSON/zip de `user.sqlite`, restaurable).
+4. **Formato de copia personalizable** (plantilla `{libro} {ref} {texto}`).
+5. **Lectura en voz alta** con las voces del Mac (AVSpeechSynthesizer).
+6. **Compartir versículo como imagen** (hoja de compartir del sistema).
+7. **Modo presentación** para proyector (texto grande, una versión).
+8. **Etiquetas en notas** y filtro por etiqueta en el panel Notas.
+9. **Diccionario de nombres y lugares** (Easton/Hitchcock, dominio público).
+Arreglos antes de repartir: BUG-V11-03 (nombres de libro en tradicional para CUVT) y BUG-V11-02 (colocación de la barra de acciones con ventana estrecha o letra grande).

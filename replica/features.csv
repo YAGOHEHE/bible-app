@@ -78,3 +78,4 @@ NBLH (Lockman Foundation),contenido,could,yes,skip,"con derechos de autor; exclu
 Comentarios 精读本注释 / 综合解读 / 陈终道讲义,contenido,could,yes,skip,"con derechos de autor; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
 Léxico chino CBOL de 信望爱,contenido,could,yes,skip,"con derechos de autor; se usan diccionarios Strong públicos en inglés; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
 Nombre; iconos y textos del original,marca,could,yes,skip,"regla clean-room; ver replica-brand; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Más versiones de dominio público incluidas (和合本繁體 CUVT; BSB; WEB; Biblia Libre BLM),contenido,could,yes,yes,"v1.1: verificado en bible.sqlite y test_bundle.py (66 libros cada una; Jn 3:16 en las cuatro); el original ofrece un catálogo mayor de módulos descargables"

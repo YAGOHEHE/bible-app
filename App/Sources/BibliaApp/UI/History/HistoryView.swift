@@ -9,7 +9,7 @@ struct HistoryView: View {
     @State private var confirmClear = false
 
     private func time(_ e: HistoryEntry) -> String {
-        Date(timeIntervalSince1970: e.at).formatted(date: .omitted, time: .shortened)
+        DateText.time(e.at)
     }
     private func reference(_ e: HistoryEntry) -> String {
         let lang = state.translations.first { $0.id == e.translationId }?.language ?? state.language
