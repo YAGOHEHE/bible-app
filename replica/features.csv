@@ -16,13 +16,12 @@ Vista dividida con panel lateral (SecondSplit),versiones,should,yes,no,segundo p
 Desplazamiento sincronizado entre versiones paralelas,versiones,must,yes,yes,parte difícil; ver recon.md
 Color de comparación configurable,ajustes,could,yes,no,
 Selector de versión activa y lista de versiones (S04),versiones,must,yes,yes,Translations / CurrentBible
-Gestor de versiones: instalar/quitar módulos incluidos (S04),versiones,should,yes,partial,catálogo local; sin descargas remotas en v1
-; activar/ordenar/principal hecho, importar deshabilitado
+Gestor de versiones: instalar/quitar módulos incluidos (S04),versiones,should,yes,partial,"catálogo local; sin descargas remotas en v1; activar/ordenar/principal hecho, importar deshabilitado (""Próximamente"")"
 Mensaje claro si la versión no está instalada o no tiene el libro,versiones,must,yes,yes,estado de error de S01/S04
-Biblia china 和合本 simplificada (dominio público),contenido,must,yes,no,fuente abierta
-Reina-Valera 1909 (dominio público),contenido,must,yes,no,sustituye a RVR1995
-KJV y ASV (dominio público),contenido,must,yes,no,
-KJV con números Strong (dominio público),contenido,must,yes,no,permite el flujo Strong
+Biblia china 和合本 simplificada (dominio público),contenido,must,yes,yes,"fuente abierta; verificado: bible.sqlite incluye CUV, RV1909, KJV (Strong) y ASV con ~31k versículos cada una, todo dominio público"
+Reina-Valera 1909 (dominio público),contenido,must,yes,yes,"sustituye a RVR1995; verificado: bible.sqlite incluye CUV, RV1909, KJV (Strong) y ASV con ~31k versículos cada una, todo dominio público"
+KJV y ASV (dominio público),contenido,must,yes,yes,"verificado: bible.sqlite incluye CUV, RV1909, KJV (Strong) y ASV con ~31k versículos cada una, todo dominio público"
+KJV con números Strong (dominio público),contenido,must,yes,yes,"permite el flujo Strong; verificado: bible.sqlite incluye CUV, RV1909, KJV (Strong) y ASV con ~31k versículos cada una, todo dominio público"
 Etiquetas Strong por palabra en el texto,estudio,must,yes,yes,tokens <WG25>/<WH430>
 Tocar palabra para abrir el panel Strong (S06),estudio,must,yes,yes,objetivo táctil a nivel de palabra
 Panel Strong: palabra original; transliteración; definición (S06),estudio,must,yes,yes,diccionarios Strong públicos en inglés
@@ -43,12 +42,11 @@ Historial de lectura automático (翻页/跳转) (S07),historial,should,yes,yes,
 Historial manual / marcadores,historial,could,yes,no,tabla Manual
 Tamaño de fuente (porcentaje),ajustes,must,yes,yes,FontSizePercent
 Tema claro/oscuro (sigue al sistema) (S08),ajustes,must,yes,yes,
-Esquemas de color (uno por modo claro/oscuro),ajustes,could,yes,no,
+Esquemas de color (uno por modo claro/oscuro),ajustes,could,yes,partial,sepia además de claro/oscuro; sin esquemas elegibles por modo
 Tipografía mixta CJK/Latín con fuentes elegibles,ajustes,should,yes,no,
 Ajustes de pantalla S08 (versiones; fuente; tema; formato),ajustes,must,yes,yes,
 Mostrar/ocultar panel de comentario/original,ajustes,should,yes,no,CommentAndOriginal
-Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,partial,adaptación nativa de escritorio
- (hecho: ⌘F, ⌘L, ⌘G; falta ⌃⌘S y resto)
+Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,partial,"adaptación nativa de escritorio; hecho: ⌘F, ⌘L, ⌘G/⇧⌘G, ⌘[ ⌘], ⌘+/-/0, ⌥⌘V/S/C, ⌘I, ⌘Y; falta ⌃⌘S y resto"
 Varias ventanas / restauración de ventana,plataforma,could,no,no,propio del clon en macOS
 Nombres de personas y lugares subrayados con enlace a diccionario,estudio,could,yes,no,necesita diccionario propio; fuera de v1
 Referencias cruzadas (串珠) como enlaces,estudio,could,yes,no,hay datos abiertos (Treasury of Scripture Knowledge)
@@ -66,17 +64,17 @@ MP3 propios y control de velocidad,audio,could,yes,no,fuera de v1
 Diccionario (辞典) con índice,diccionario,could,yes,no,fuera de v1
 Preguntas y respuestas bíblicas (圣经问答),contenido,could,yes,no,fuera de v1
 Mapas,mapas,could,yes,no,fuera de v1; hay datos abiertos (OpenBible geocoding)
-Cuentas de usuario / inicio de sesión (correo; teléfono; QQ),cuentas,skip,yes,no,el grupo de estudio no necesita cuentas; infraestructura de red del original
-Sincronización multidispositivo,sincronización,skip,yes,no,depende de servidor y cuentas; iCloud podría valorarse más adelante
-Copia de seguridad WebDAV,datos,skip,yes,no,fuera de alcance
-Transferencia de datos con Android/PC,datos,skip,yes,no,fuera de alcance
-Compartir en WeChat/QQ/Weibo y código QR,social,skip,yes,no,SDKs de terceros; solo el menú de compartir del sistema si hiciera falta
-Descarga por código/口令 de recursos,red,skip,yes,no,servidor del original
-Servicio y red del original (descargas de módulos y datos),red,skip,yes,no,no replicable
-Analítica y configuración online (Umeng),red,skip,yes,no,sin telemetría en el clon
-RVR1995 (Sociedades Bíblicas Unidas),contenido,skip,yes,no,con derechos de autor; se sustituye por Reina-Valera 1909
-NBLH (Lockman Foundation),contenido,skip,yes,no,con derechos de autor
-和合本 con marcado propio del original (小标题; subrayados de nombres),contenido,skip,yes,no,edición/revisión propia del desarrollador; el clon usa CUV de dominio público sin esos extras
-Comentarios 精读本注释 / 综合解读 / 陈终道讲义,contenido,skip,yes,no,con derechos de autor
-Léxico chino CBOL de 信望爱,contenido,skip,yes,no,con derechos de autor; se usan diccionarios Strong públicos en inglés
-Nombre; iconos y textos del original,marca,skip,yes,no,regla clean-room; ver replica-brand
+Cuentas de usuario / inicio de sesión (correo; teléfono; QQ),cuentas,could,yes,skip,"el grupo de estudio no necesita cuentas; infraestructura de red del original; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Sincronización multidispositivo,sincronización,could,yes,skip,"depende de servidor y cuentas; iCloud podría valorarse más adelante; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Copia de seguridad WebDAV,datos,could,yes,skip,"fuera de alcance; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Transferencia de datos con Android/PC,datos,could,yes,skip,"fuera de alcance; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Compartir en WeChat/QQ/Weibo y código QR,social,could,yes,skip,"SDKs de terceros; solo el menú de compartir del sistema si hiciera falta; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Descarga por código/口令 de recursos,red,could,yes,skip,"servidor del original; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Servicio y red del original (descargas de módulos y datos),red,could,yes,skip,"no replicable; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Analítica y configuración online (Umeng),red,could,yes,skip,"sin telemetría en el clon; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+RVR1995 (Sociedades Bíblicas Unidas),contenido,could,yes,skip,"con derechos de autor; se sustituye por Reina-Valera 1909; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+NBLH (Lockman Foundation),contenido,could,yes,skip,"con derechos de autor; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+和合本 con marcado propio del original (小标题; subrayados de nombres),contenido,could,yes,skip,"edición/revisión propia del desarrollador; el clon usa CUV de dominio público sin esos extras; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Comentarios 精读本注释 / 综合解读 / 陈终道讲义,contenido,could,yes,skip,"con derechos de autor; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Léxico chino CBOL de 信望爱,contenido,could,yes,skip,"con derechos de autor; se usan diccionarios Strong públicos en inglés; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"
+Nombre; iconos y textos del original,marca,could,yes,skip,"regla clean-room; ver replica-brand; excluido del alcance (priority era ""skip"", movido a clone=skip para que parity.py lo excluya)"

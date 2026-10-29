@@ -54,6 +54,13 @@ extension BibliaApp {
             state.showStrong(id)
         }
         if d.bool(forKey: "showHistory") { state.showHistory = true }
+        // Ganchos solo para pruebas manuales (replica/test-plan.md).
+        if d.object(forKey: "startParallel") != nil { state.setParallel(d.bool(forKey: "startParallel")) }
+        if d.string(forKey: "startParallelLayout") == "interleaved" { state.setParallelLayout(.interleaved) }
+        if d.bool(forKey: "showVersions") { state.showVersions = true }
+        if d.double(forKey: "windowWidth") > 0, let w = NSApp.windows.first {
+            w.setContentSize(NSSize(width: d.double(forKey: "windowWidth"), height: d.double(forKey: "windowHeight") > 0 ? d.double(forKey: "windowHeight") : 700))
+        }
         if let q = d.string(forKey: "startSearch") {
             search.start(q)
             if d.bool(forKey: "startSearchOpenFirst") { Task { await search.run(); search.open(index: 0) } }
