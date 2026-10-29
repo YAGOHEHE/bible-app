@@ -1,17 +1,23 @@
 # Brief de icono de app (marca provisional "BibliaApp")
 
-Objetivo: icono original para macOS (1024×1024, cuadrado redondeado con la plantilla de Big Sur+, sombra suave del sistema). Nada de cruz, libro abierto clásico, paloma, ni nada que imite el icono del producto de referencia (no consultado). Debe reconocerse a 16 px y verse bien sobre dock claro y oscuro.
+## Concepto final: cruz latina (decisión del usuario, v1.1)
+Una cruz latina sencilla, crema (`#F4ECD8`, con degradado muy sutil `#FFF9EA` -> `#EADFC0`), centrada sobre el fondo "squircle" índigo actual (degradado `#4A5DB8` arriba -> `#2C3470` abajo, coherente con `tokens.json`). Sin brillos, rayos ni libro. Sombra suave bajo la cruz (desplazamiento 8 px, desenfoque 16 px, 45 %) y la sombra de sistema del squircle.
 
-Paleta de marca provisional (coherente con `tokens.json`): índigo tinta `#3447A0`, sepia cálido `#F4ECD8`, acento ámbar `#946B00`/`#D9B24A` para un único punto de luz. Un solo plano de color más una forma; sin degradados complicados (un degradado suave índigo claro -> oscuro de arriba abajo).
+Razón: reconocible al instante incluso a 16 px (dos barras de alto contraste crema/índigo, ~9:1), tono sobrio acorde con una app de lectura, y mantiene la identidad cromática anterior.
 
-## Concepto A: "Dos voces, un texto"
-Dos formas de columna verticales (rectángulos de esquinas redondeadas) lado a lado, una índigo oscuro y otra sepia clara, que se solapan en el centro formando una tercera zona ámbar; alude a comparar versiones en paralelo. Sobre la zona ámbar, un pequeño punto (la palabra con Strong). Sin texto. Variante pequeña (16-32 px): solo las dos columnas y el punto.
+### Medidas (lienzo 1024, cuerpo 824 px, margen 100 px)
+- Altura total de la cruz: 520 px (63 % del cuerpo). Ancho de los brazos: 372 px (brazos iguales de 128 px a cada lado del eje).
+- Grosor de barras: 116 px (14,1 % del cuerpo); esquinas con radio ~4 px.
+- Travesaño: su centro a 1/3 de la altura desde arriba (travesaño de y=top-173 ± 58); el palo inferior mide ~347 px frente a ~173 px superior (proporción latina).
+- Centrado óptico: la caja de la cruz queda 14 px por encima del centro geométrico (eje vertical x=512).
+- Prueba a 16/32 px: legible y equilibrada; a 16 px el travesaño ocupa ~2 px y la cruz se lee sin ambigüedad.
 
-## Concepto B: "Luz en el margen"
-Una página sepia vista de frente con un gran número de versículo en superíndice (el glifo "1" en serif, índigo) que nace en la esquina superior izquierda, y debajo tres líneas de texto onduladas, la central con un subrayado punteado ámbar (el motivo del Strong). Evoca estudio y lectura detallada sin libro ni cruz. Variante pequeña: solo el "1" y el punto ámbar.
+### Generación
+`scripts/make_icon.sh` -> `scripts/make_icon.swift` (CoreGraphics) -> `App/Icon/Biblia-1024.png` -> iconset temporal (16-512 @1x/@2x con `sips`) -> `App/Icon/Biblia.icns` (`iconutil`). Previsualizaciones: `replica/screens/icon-cross-{1024,32,16}.png`.
 
-## Entregables y reglas
-- Fuente: SVG propio o Icon Composer (`.icon`), sin fuentes con licencia (usar glifo dibujado para el "1").
-- Export: 1024 con margen de seguridad del 10 %; los tamaños 16-512 salen de `AppIcon.appiconset`.
-- Prueba: sobre fondo claro, oscuro y mosaico del Dock; contraste forma/fondo >= 3:1.
-- Sustituible tras el naming final; el nombre del activo es `AppIcon`.
+## Reglas
+- Prueba sobre dock claro y oscuro; contraste forma/fondo >= 3:1 (cumplido).
+- Sustituible tras el naming final.
+
+## Conceptos descartados (v1.0)
+A "Dos voces, un texto" (columnas solapadas con punto ámbar, icono de 1.0.0) y B "Luz en el margen" (página con versículo en superíndice).

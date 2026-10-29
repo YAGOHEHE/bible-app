@@ -96,7 +96,26 @@ TRANSLATIONS = {
     "RV1909": ("spa_r09", "Reina-Valera 1909", "es"),
     "KJV": ("eng_kjv", "King James Version (1769 text)", "en"),
     "ASV": ("eng_asv", "American Standard Version (1901)", "en"),
+    # added in schema 3
+    "CUVT": ("cmn_cuv", "和合本 (新標點和合本, 繁體) Chinese Union Version, traditional", "zh"),
+    "BSB": ("BSB", "Berean Standard Bible", "en"),
+    "WEB": ("ENGWEBP", "World English Bible (Protestant canon)", "en"),
+    "BLM": ("spa_blm", "Santa Biblia libre para el mundo (Spanish Free Bible for the World)", "es"),
 }
+
+# HelloAO omits the license block for some texts. Only add an entry here after reading the
+# publisher's own statement (checked 2026-10-29). Value = (license label, statement URL).
+LICENSE_OVERRIDES = {
+    # "The Berean Bible ... texts are officially dedicated to the public domain as of April 30, 2023."
+    "BSB": ("Public Domain", "https://berean.bible/terms.htm"),
+}
+
+OPENBIBLE_URL = "https://a.openbible.info/data/cross-references.zip"
+OPENBIBLE_PAGE = "https://www.openbible.info/labs/cross-references/"
+OPENBIBLE_CODES = ("Gen Exod Lev Num Deut Josh Judg Ruth 1Sam 2Sam 1Kgs 2Kgs 1Chr 2Chr Ezra Neh Esth Job Ps Prov Eccl "
+                   "Song Isa Jer Lam Ezek Dan Hos Joel Amos Obad Jonah Mic Nah Hab Zeph Hag Zech Mal Matt Mark Luke "
+                   "John Acts Rom 1Cor 2Cor Gal Eph Phil Col 1Thess 2Thess 1Tim 2Tim Titus Phlm Heb Jas 1Pet 2Pet "
+                   "1John 2John 3John Jude Rev").split()
 
 
 def fetch(url, name):
@@ -172,6 +191,34 @@ def flatten(items):
     return "".join(out)
 
 
+def unglue_notes(items):
+    """Drop footnote markers ({'noteId': n}); sources often lose the word space around them
+    ("one and only" <note> "Son" -> "onlySon"), so re-insert one when both sides are word characters."""
+    out, prev_tail, pending, prev_poem, prev_adjacent = [], "", False, False, False
+    for x in items:
+        if isinstance(x, dict) and "noteId" in x and "text" not in x:
+            pending = True
+            continue
+        txt = x if isinstance(x, str) else (x.get("text") if isinstance(x, dict) else None)
+        is_poem = isinstance(x, dict) and bool(x.get("poem"))
+        if txt:
+            # consecutive poetry lines with no lineBreak between them ("man,by man") need a space
+            glue = (is_poem or prev_poem) and prev_adjacent and prev_tail[-1:] not in ("", " ") and txt[:1] != " "
+            if glue or (pending and (prev_tail[-1:].isalnum() or prev_tail[-1:] in ",;:.!?") and txt[:1].isalnum()):
+                if isinstance(x, str):
+                    x = " " + x
+                else:
+                    x = dict(x, text=" " + x["text"])
+            prev_tail = x if isinstance(x, str) else x["text"]
+            pending = False
+        if txt:
+            prev_poem, prev_adjacent = is_poem, True
+        elif isinstance(x, dict) and x.get("lineBreak"):
+            prev_poem, prev_adjacent = False, False
+        out.append(x)
+    return out
+
+
 def parse_chapter_layout(content, lang, fix_punct=False):
     """HelloAO chapter content -> (verses, headings, pieces).
 
@@ -221,6 +268,7 @@ def parse_chapter_layout(content, lang, fix_punct=False):
             need_new = True; pending_para = True
         elif t == "verse":
             n = it["number"]
+            it = dict(it, content=unglue_notes(it["content"]))
             text = nz(flatten(it["content"]))
             if not text:
                 pending = []
@@ -268,7 +316,9 @@ def load_helloao(tid, lang):
     verses, headings, layout = [], [], []
     for b in d["books"]:
         bn = b["order"]
-        assert 1 <= bn <= 66, (hid, b["id"], bn)
+        if bn > 66:      # deuterocanonical books (e.g. spa_blm) are out of scope: 66-book canon only
+            continue
+        assert bn >= 1, (hid, b["id"], bn)
         for ch in b["chapters"]:
             cn = ch["chapter"]["number"]
             vs, hs, ps = parse_chapter_layout(ch["chapter"]["content"], lang, fix_punct=tid in ("KJV", "ASV"))
@@ -523,15 +573,68 @@ CREATE TABLE verse_words(translation_id TEXT NOT NULL, book INTEGER NOT NULL, ch
   idx INTEGER NOT NULL, word TEXT NOT NULL, strong TEXT, PRIMARY KEY(translation_id, book, chapter, verse, idx)) WITHOUT ROWID;
 CREATE INDEX verse_words_strong ON verse_words(strong);
 CREATE TABLE lexicon(id TEXT PRIMARY KEY, lemma TEXT, translit TEXT, pronunciation TEXT, definition TEXT, kjv_usage TEXT);
+CREATE TABLE cross_refs(book INTEGER NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL,
+  to_book INTEGER NOT NULL, to_chapter INTEGER NOT NULL, to_verse_start INTEGER NOT NULL, to_verse_end INTEGER NOT NULL,
+  votes INTEGER NOT NULL);
+CREATE INDEX cross_refs_idx ON cross_refs(book, chapter, verse);
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 """
 
 
 def license_text(info):
-    lic = info["license"]
+    """Returns (label, statement URL). Aborts unless public domain (or a manually verified override)."""
+    lic = info.get("license") or {}
     if lic.get("publicDomain"):
-        return "Public Domain"
-    raise RuntimeError(f"{info['id']} is not public domain: {lic}")
+        return "Public Domain", info.get("licenseUrl") or info.get("website")
+    if info["id"] in LICENSE_OVERRIDES:
+        return LICENSE_OVERRIDES[info["id"]]
+    raise RuntimeError(f"{info['id']} is not public domain: {lic or 'no license block'}")
+
+
+def load_cross_refs(kjv_last_verse):
+    """OpenBible.info cross references (CC BY 4.0; mostly Treasury of Scripture Knowledge, public domain).
+
+    Returns rows (book, chapter, verse, to_book, to_chapter, to_vstart, to_vend, votes).
+    Rows with votes < 0 are dropped. A target range that crosses a chapter boundary is clamped to the
+    last verse of its first chapter (the schema has a single to_chapter).
+    """
+    zpath = fetch(OPENBIBLE_URL, "openbible-cross-references.zip")
+    page = fetch(OPENBIBLE_PAGE, "openbible-cross-references.html").read_text(encoding="utf-8", errors="replace")
+    # license check: the page must still say CC BY (no NC / ND), and the data header must say CC-BY
+    if "creativecommons.org/licenses/by/" not in page:
+        raise RuntimeError("OpenBible cross-references: Creative Commons BY statement not found; aborting")
+    with zipfile.ZipFile(zpath) as z:
+        raw = z.read("cross_references.txt").decode("utf-8").splitlines()
+    if "CC-BY" not in raw[0] or re.search(r"-(NC|ND)", raw[0]):
+        raise RuntimeError(f"OpenBible cross-references: unexpected license header {raw[0]!r}")
+    bk = {c: i for i, c in enumerate(OPENBIBLE_CODES, 1)}
+
+    def ref(r):
+        b, c, v = r.split(".")
+        return bk[b], int(c), int(v)
+
+    rows, dropped = [], 0
+    for line in raw[1:]:
+        if not line.strip():
+            continue
+        a, b, votes = line.split("\t")
+        votes = int(votes)
+        if votes < 0:
+            dropped += 1
+            continue
+        fb, fc, fv = ref(a)
+        if "-" in b:
+            s_, e_ = b.split("-")
+            tb, tc, ts = ref(s_)
+            eb, ec, ee = ref(e_)
+            te = ee if (eb, ec) == (tb, tc) else kjv_last_verse.get((tb, tc), ts)
+            te = max(te, ts)
+        else:
+            tb, tc, ts = ref(b)
+            te = ts
+        rows.append((fb, fc, fv, tb, tc, ts, te, votes))
+    print(f"cross_refs: {len(rows)} rows kept, {dropped} dropped (votes < 0)")
+    return rows
 
 
 def main():
@@ -548,7 +651,7 @@ def main():
 
     for tid, (hid, name, lang) in TRANSLATIONS.items():
         t = info[hid]
-        lic = license_text(t)  # aborts the build if a source is not public domain
+        lic, _stmt = license_text(t)  # aborts the build if a source is not public domain
         src = t.get("website") or t.get("licenseUrl")
         db.execute("INSERT INTO translations VALUES(?,?,?,?,?,?)",
                    (tid, name, lang, lic, src, 1 if tid == "KJV" else 0))
@@ -578,13 +681,22 @@ def main():
     db.executemany("INSERT INTO lexicon VALUES(?,?,?,?,?,?)", lex)
     print(f"lexicon: {len(lex)}")
 
-    db.execute("INSERT INTO meta VALUES('schema_version','2')")
+    kjv_last = {}
+    for (_, b, c, v, _t) in db.execute("SELECT * FROM verses WHERE translation_id='KJV'"):
+        kjv_last[(b, c)] = max(kjv_last.get((b, c), 0), v)
+    refs = load_cross_refs(kjv_last)
+    db.executemany("INSERT INTO cross_refs VALUES(?,?,?,?,?,?,?,?)", refs)
+
+    db.execute("INSERT INTO meta VALUES('schema_version','3')")
+    db.execute("INSERT INTO meta VALUES('cross_refs_source',"
+               "'OpenBible.info cross references (CC BY 4.0), https://www.openbible.info/labs/cross-references/; "
+               "derived mainly from the Treasury of Scripture Knowledge (public domain)')")
     db.execute("INSERT INTO meta VALUES('structure_source:RV1909','BSB (adaptada por versículo)')")
     db.execute("INSERT INTO meta VALUES('built_at',?)", (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
     db.commit()
     db.execute("INSERT INTO verses_fts(verses_fts) VALUES('optimize')")
     db.commit()
-    db.execute("PRAGMA user_version=2")
+    db.execute("PRAGMA user_version=3")
     db.execute("VACUUM")
     db.close()
     print(f"wrote {OUT} ({OUT.stat().st_size/1e6:.1f} MB); HTTP requests this run: {REQUESTS_MADE}")

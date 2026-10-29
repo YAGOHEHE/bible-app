@@ -218,3 +218,30 @@ struct LexiconRepository {
         }
     }
 }
+
+struct CrossRefRepository {
+    let db: BibleDatabase
+
+    /// Referencias cruzadas de un versículo, de más a menos votadas.
+    func refs(book: Int, chapter: Int, verse: Int) throws -> [CrossRef] {
+        try db.reader.read {
+            try CrossRef.fetchAll($0, sql: """
+                SELECT * FROM cross_refs WHERE book = ? AND chapter = ? AND verse = ?
+                ORDER BY votes DESC, to_book, to_chapter, to_verse_start
+                """, arguments: [book, chapter, verse])
+        }
+    }
+
+    /// Número de referencias por versículo de un capítulo (para marcar los versículos que tienen).
+    func counts(book: Int, chapter: Int) throws -> [Int: Int] {
+        try db.reader.read { d in
+            var out: [Int: Int] = [:]
+            for r in try Row.fetchAll(d, sql: """
+                SELECT verse, COUNT(*) AS n FROM cross_refs WHERE book = ? AND chapter = ? GROUP BY verse
+                """, arguments: [book, chapter]) {
+                out[r["verse"]] = r["n"]
+            }
+            return out
+        }
+    }
+}

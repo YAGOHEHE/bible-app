@@ -4,7 +4,8 @@ import sqlite3, unicodedata, unittest
 from pathlib import Path
 
 DB = Path(__file__).resolve().parent.parent / "App" / "Resources" / "bible.sqlite"
-IDS = ["CUV", "RV1909", "KJV", "ASV"]
+IDS = ["CUV", "RV1909", "KJV", "ASV", "CUVT", "BSB", "WEB", "BLM"]
+NEW_IDS = ["CUVT", "BSB", "WEB", "BLM"]
 
 
 class BundleTests(unittest.TestCase):
@@ -17,10 +18,11 @@ class BundleTests(unittest.TestCase):
 
     def test_integrity_and_meta(self):
         self.assertEqual(self.q("PRAGMA integrity_check"), [("ok",)])
-        self.assertEqual(self.q("PRAGMA user_version"), [(2,)])
+        self.assertEqual(self.q("PRAGMA user_version"), [(3,)])
         self.assertEqual(self.q("PRAGMA journal_mode")[0][0].lower(), "delete")
         meta = dict(self.q("SELECT key,value FROM meta"))
-        self.assertEqual(meta["schema_version"], "2")
+        self.assertEqual(meta["schema_version"], "3")
+        self.assertIn("OpenBible.info", meta["cross_refs_source"])
         self.assertEqual(meta["structure_source:RV1909"], "BSB (adaptada por versículo)")
         self.assertIn("built_at", meta)
 
@@ -44,10 +46,12 @@ class BundleTests(unittest.TestCase):
             r = self.q("SELECT text FROM verses WHERE translation_id=? AND book=43 AND chapter=3 AND verse=16", t)
             self.assertEqual(len(r), 1, t)
             print(f"{t} Jn 3:16: {r[0][0]}")
-        cuv = self.q("SELECT text FROM verses WHERE translation_id='CUV' AND book=43 AND chapter=3 AND verse=16")[0][0]
-        self.assertIn("神爱世人", cuv)
-        self.assertNotIn(" ", cuv)
-        self.assertNotIn("　", cuv)
+        for t, needle in (("CUV", "神爱世人"), ("CUVT", "愛世人")):
+            cuv = self.q("SELECT text FROM verses WHERE translation_id=? AND book=43 AND chapter=3 AND verse=16", t)[0][0]
+            self.assertIn(needle, cuv)
+            self.assertNotIn(" ", cuv)
+            self.assertNotIn("　", cuv)
+        self.assertIn("one and only Son", self.q("SELECT text FROM verses WHERE translation_id='BSB' AND book=43 AND chapter=3 AND verse=16")[0][0])
         for t in IDS:  # no markup / pilcrows left
             self.assertEqual(self.q("SELECT COUNT(*) FROM verses WHERE translation_id=? AND (text LIKE '%<%' OR text LIKE '%¶%' OR text LIKE '%  %')", t), [(0,)])
 
@@ -62,6 +66,33 @@ class BundleTests(unittest.TestCase):
         # NOTE: trigram needs >= 3 chars. 2-char CJK queries (e.g. 永生) return rows only by
         # accident of quoting; the app must fall back to LIKE '%永生%' on verses for 1-2 char queries.
         self.assertGreater(self.q("SELECT COUNT(*) FROM verses WHERE translation_id='CUV' AND text LIKE '%永生%'")[0][0], 10)
+
+    def test_new_translations(self):
+        got = {r[0]: r for r in self.q("SELECT id, language, license, has_strongs FROM translations")}
+        for t, lang in (("CUVT", "zh"), ("BSB", "en"), ("WEB", "en"), ("BLM", "es")):
+            self.assertEqual(got[t][1:], (lang, "Public Domain", 0), t)
+            n = self.q("SELECT COUNT(*) FROM verses WHERE translation_id=?", t)[0][0]
+            print(f"{t}: {n} verses")
+            self.assertTrue(31000 <= n <= 31110, (t, n))
+            self.assertGreater(self.q("SELECT COUNT(*) FROM verses_fts WHERE translation_id=?", t)[0][0], 31000)
+        self.assertTrue(self.q("SELECT 1 FROM verses_fts WHERE verses_fts MATCH '\"永生\"' AND translation_id='CUVT' LIMIT 1") or
+                        self.q("SELECT 1 FROM verses_fts WHERE verses_fts MATCH '\"得永生\"' AND translation_id='CUVT' LIMIT 1"))
+        self.assertGreater(len(self.q("SELECT 1 FROM verses_fts WHERE verses_fts MATCH 'loved' AND translation_id='BSB'")), 50)
+        # no glued words from dropped footnote markers
+        self.assertEqual(self.q("SELECT COUNT(*) FROM verses WHERE translation_id IN ('BSB','WEB','ASV') AND (text LIKE '%onlySon%' OR text LIKE '%man,by%')"), [(0,)])
+
+    def test_cross_refs(self):
+        n = self.q("SELECT COUNT(*) FROM cross_refs")[0][0]
+        print("cross_refs rows:", n)
+        self.assertGreater(n, 300000)
+        self.assertEqual(self.q("SELECT COUNT(*) FROM cross_refs WHERE votes < 0"), [(0,)])
+        self.assertEqual(self.q("SELECT COUNT(*) FROM cross_refs WHERE to_verse_end < to_verse_start OR book NOT BETWEEN 1 AND 66 OR to_book NOT BETWEEN 1 AND 66"), [(0,)])
+        jn = self.q("SELECT to_book,to_chapter,to_verse_start,to_verse_end,votes FROM cross_refs WHERE book=43 AND chapter=3 AND verse=16 ORDER BY votes DESC")
+        self.assertGreater(len(jn), 0)
+        self.assertEqual(jn[0][:4], (45, 5, 8, 8))                      # Rom 5:8 is the top ref
+        self.assertIn((62, 4, 9, 10), {r[:4] for r in jn})              # 1 Jn 4:9-10 (a range)
+        plan = self.q("EXPLAIN QUERY PLAN SELECT * FROM cross_refs WHERE book=43 AND chapter=3 AND verse=16")
+        self.assertIn("cross_refs_idx", str(plan))
 
     def test_lexicon(self):
         self.assertEqual(self.q("SELECT lemma FROM lexicon WHERE id='G25'"), [(unicodedata.normalize("NFC", "ἀγαπάω"),)])

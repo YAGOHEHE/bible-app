@@ -32,6 +32,24 @@ final class UserStore {
                 CREATE TABLE search_history(query TEXT PRIMARY KEY, at REAL NOT NULL);
                 """)
         }
+        m.registerMigration("v2") { db in
+            try db.execute(sql: """
+                CREATE TABLE highlights(
+                  book INTEGER NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL,
+                  color TEXT NOT NULL, updated_at REAL NOT NULL,
+                  PRIMARY KEY(book, chapter, verse));
+                CREATE TABLE notes(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  book INTEGER NOT NULL, chapter INTEGER NOT NULL,
+                  verse_start INTEGER NOT NULL, verse_end INTEGER NOT NULL,
+                  body TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+                CREATE INDEX notes_chapter ON notes(book, chapter);
+                CREATE TABLE bookmarks(
+                  book INTEGER NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL,
+                  created_at REAL NOT NULL,
+                  PRIMARY KEY(book, chapter, verse));
+                """)
+        }
         return m
     }
 

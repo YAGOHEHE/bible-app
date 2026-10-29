@@ -32,6 +32,13 @@ struct AboutView: View {
                 Text("Textos obtenidos de eBible.org mediante la API HelloAO Free Use Bible. KJV con números Strong: eBible.org / Crosswire Bible Society.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
+                Text("Versiones adicionales: 和合本 tradicional (cmn_cuv), Berean Standard Bible (dominio público desde el 30 de abril de 2023, https://berean.bible/terms.htm), World English Bible y Santa Biblia libre para el mundo, todas de dominio público.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+
+                Text("Referencias cruzadas").font(.headline)
+                Text("Referencias cruzadas: OpenBible.info, bajo licencia Creative Commons Atribución (CC BY 4.0), https://www.openbible.info/labs/cross-references/. Derivadas principalmente del Treasury of Scripture Knowledge (dominio público).")
+                    .fixedSize(horizontal: false, vertical: true)
+
                 Text("Léxico Strong").font(.headline)
                 Text("Diccionarios hebreo y griego de Strong (dominio público) a través de OpenScriptures (https://github.com/openscriptures/strongs).")
                     .fixedSize(horizontal: false, vertical: true)

@@ -1,4 +1,4 @@
-// Genera App/Icon/Biblia-1024.png (concepto A "Dos voces, un texto") y Biblia.icns.
+// Genera App/Icon/Biblia-1024.png (cruz latina crema sobre índigo) y Biblia.icns.
 // Uso: swift scripts/make_icon.swift   (diseño original dibujado con CoreGraphics)
 import AppKit
 import Foundation
@@ -40,23 +40,33 @@ ctx.addPath(bodyPath); ctx.clip()
 let grad = CGGradient(colorsSpace: cs, colors: [rgb(0x4A5DB8), rgb(0x2C3470)] as CFArray, locations: [0, 1])!
 ctx.drawLinearGradient(grad, start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
 
-// Dos columnas que se solapan
-let h: CGFloat = 480, w: CGFloat = 270, y0: CGFloat = 272, r: CGFloat = 44
-let left = CGRect(x: 286, y: y0, width: w, height: h)
-let right = CGRect(x: 468, y: y0, width: w, height: h)
-let rp: (CGRect) -> CGPath = { CGPath(roundedRect: $0, cornerWidth: r, cornerHeight: r, transform: nil) }
-ctx.addPath(rp(left)); ctx.setFillColor(rgb(0xF4ECD8)); ctx.fillPath()           // sepia
-ctx.addPath(rp(right)); ctx.setFillColor(rgb(0x9DB0FF)); ctx.fillPath()          // índigo claro (tema oscuro)
-// Zona de solape ámbar
-let ov = left.intersection(right)
+// Cruz latina (crema). Medidas sobre el cuerpo de 824 px:
+// altura 520, brazos 372 de ancho total, grosor 116 (14 %), travesaño con su centro a 1/3 de la altura,
+// centrada ópticamente 14 px por encima del centro geométrico.
+let H: CGFloat = 520, W: CGFloat = 372, t: CGFloat = 116
+let top: CGFloat = 512 + H / 2 + 14, bot = top - H
+let barY = top - H / 3                       // centro del travesaño
+let vx0 = 512 - t / 2, vx1 = 512 + t / 2
+let hx0 = 512 - W / 2, hx1 = 512 + W / 2
+let hy1 = barY + t / 2, hy0 = barY - t / 2
+let cross = CGMutablePath()
+cross.addLines(between: [
+    CGPoint(x: vx0, y: top), CGPoint(x: vx1, y: top), CGPoint(x: vx1, y: hy1), CGPoint(x: hx1, y: hy1),
+    CGPoint(x: hx1, y: hy0), CGPoint(x: vx1, y: hy0), CGPoint(x: vx1, y: bot), CGPoint(x: vx0, y: bot),
+    CGPoint(x: vx0, y: hy0), CGPoint(x: hx0, y: hy0), CGPoint(x: hx0, y: hy1), CGPoint(x: vx0, y: hy1)])
+cross.closeSubpath()
+let rounded = cross.copy(strokingWithWidth: 8, lineCap: .round, lineJoin: .round, miterLimit: 1)
+// sombra muy suave
 ctx.saveGState()
-ctx.addPath(rp(left)); ctx.clip()
-ctx.addPath(rp(right)); ctx.clip()
-ctx.setFillColor(rgb(0xD9B24A)); ctx.fill(ov)
+ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 16, color: rgb(0x0B0F2E, 0.45))
+ctx.addPath(cross); ctx.addPath(rounded); ctx.setFillColor(rgb(0xF4ECD8)); ctx.fillPath()
 ctx.restoreGState()
-// Punto (la palabra con Strong)
-let dot = CGRect(x: ov.midX - 30, y: ov.midY - 30, width: 60, height: 60)
-ctx.setFillColor(rgb(0x2C3470)); ctx.fillEllipse(in: dot)
+// relleno con degradado sutil
+ctx.saveGState()
+ctx.addPath(cross); ctx.addPath(rounded); ctx.clip()
+let cg = CGGradient(colorsSpace: cs, colors: [rgb(0xFFF9EA), rgb(0xEADFC0)] as CFArray, locations: [0, 1])!
+ctx.drawLinearGradient(cg, start: CGPoint(x: 512, y: top), end: CGPoint(x: 512, y: bot), options: [])
+ctx.restoreGState()
 ctx.restoreGState()
 
 let rep = NSBitmapImageRep(cgImage: ctx.makeImage()!)

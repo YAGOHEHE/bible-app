@@ -55,7 +55,8 @@ final class AppState {
     var showHistory = false
 
     var bible: BibleDatabase?
-    @ObservationIgnored var user: UserStore?
+    @ObservationIgnored var user: UserStore? { didSet { annotations = user.map { AnnotationStore(user: $0, defaults: defaults) } } }
+    @ObservationIgnored private(set) var annotations: AnnotationStore?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var verseRepo: VerseRepository?
     @ObservationIgnored private var transRepo: TranslationRepository?
