@@ -67,6 +67,12 @@ struct StrongPanel: View {
                     }
                     Spacer()
                 }
+                if let c = state.strongContext {
+                    (Text(c.before) + Text(c.word).bold().foregroundColor(theme.palette.textPrimary) + Text(c.after))
+                        .font(.system(size: 12, design: .serif)).foregroundStyle(theme.palette.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel("En contexto, versículo \(c.verse): \(c.before)\(c.word)\(c.after)")
+                }
                 if let l = e.lemma {
                     Text(l).font(lemmaFont(e.id)).foregroundStyle(theme.palette.textPrimary)
                         .environment(\.layoutDirection, hebrew ? .rightToLeft : .leftToRight)
@@ -95,10 +101,15 @@ struct StrongPanel: View {
         }
     }
 
+    /// Libro en el idioma de la versión de las apariciones (KJV -> inglés) + versión.
+    private func occurrenceTitle(_ o: StrongOccurrence) -> String {
+        "\(BookNameLanguage.name(o.ref.book, language: state.strongLanguage)) \(o.ref.chapter):\(o.ref.verseFrom ?? 1) (\(state.strongTranslationId ?? "KJV"))"
+    }
+
     @ViewBuilder private var occurrences: some View {
         let total = state.strongOccurrenceTotal
         VStack(alignment: .leading, spacing: 4) {
-            Text("OTRAS APARICIONES").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.palette.textMuted)
+            Text("OTRAS APARICIONES · \(state.strongTranslationId ?? "KJV")").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.palette.textMuted)
             Text(state.strongOccurrences.count < total
                  ? "\(total) versículos (se muestran \(state.strongOccurrences.count))" : "\(total) versículos")
                 .font(.callout).foregroundStyle(theme.palette.textSecondary)
@@ -107,14 +118,14 @@ struct StrongPanel: View {
             ForEach(state.strongOccurrences) { o in
                 Button { state.open(ref: o.ref) } label: {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("\(state.bookName(o.ref.book)) \(o.ref.chapter):\(o.ref.verseFrom ?? 1)")
+                        Text(occurrenceTitle(o))
                             .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.palette.accent)
                         Text(o.text).font(.system(size: 12)).lineLimit(2).foregroundStyle(theme.palette.textSecondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(state.bookName(o.ref.book)) \(o.ref.chapter):\(o.ref.verseFrom ?? 1). \(o.text)")
+                .accessibilityLabel("\(occurrenceTitle(o)). \(o.text)")
                 Divider().overlay(theme.palette.border)
             }
         }

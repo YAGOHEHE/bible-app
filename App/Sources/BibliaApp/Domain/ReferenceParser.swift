@@ -5,6 +5,7 @@ import Foundation
 enum ReferenceError: Error, Equatable {
     case unknownBook(String)
     case invalidReference(String)
+    case zeroChapter(book: Int)
 }
 
 enum ReferenceParser {
@@ -107,6 +108,9 @@ enum ReferenceParser {
         guard let ch = group(2).flatMap({ Int($0) }) else { throw ReferenceError.invalidReference(ref) }
         let v1 = group(3).flatMap { Int($0) }
         let v2 = group(4).flatMap { Int($0) } ?? v1
+        // BUG-001: capítulo y versículo empiezan en 1.
+        guard ch >= 1 else { throw ReferenceError.zeroChapter(book: book) }
+        guard (v1 ?? 1) >= 1, (v2 ?? 1) >= 1 else { throw ReferenceError.invalidReference(ref) }
         return BibleRef(book: book, chapter: ch, verseFrom: v1, verseTo: v2)
     }
 }

@@ -100,6 +100,8 @@ enum GotoResolver {
         var ref: BibleRef
         do {
             ref = try ReferenceParser.parse(s)
+        } catch ReferenceError.zeroChapter(let b) {
+            return .failure(.chapterOutOfRange(book: b, max: counts[safe: b - 1] ?? 0))
         } catch {
             guard let b = try? ReferenceParser.resolveBook(s) else { return .failure(.notReference) }
             ref = BibleRef(book: b, chapter: 1, verseFrom: nil, verseTo: nil)
@@ -115,5 +117,33 @@ enum GotoResolver {
             ref.verseFrom = min(a, b); ref.verseTo = max(a, b)
         }
         return .success(ref)
+    }
+}
+
+// MARK: - sugerencia de otra versión (BUG-005)
+
+struct SearchSuggestion: Equatable {
+    var translationId: String
+    var count: Int
+
+    /// Versión con más coincidencias entre las demás (empate: la primera). `nil` si ninguna tiene.
+    static func best(counts: [(id: String, count: Int)], excluding current: String) -> SearchSuggestion? {
+        var best: SearchSuggestion?
+        for c in counts where c.id != current && c.count > 0 {
+            if best == nil || c.count > best!.count { best = SearchSuggestion(translationId: c.id, count: c.count) }
+        }
+        return best
+    }
+
+    func message(query: String, current: String) -> String {
+        "Sin resultados en \(current). «\(query)» aparece \(count) \(count == 1 ? "vez" : "veces") en \(translationId)"
+    }
+}
+
+/// Nombre de libro según el idioma de la versión (BUG-006): KJV -> inglés, CUV -> chino, RV1909 -> español.
+enum BookNameLanguage {
+    static func name(_ n: Int, language: String) -> String {
+        guard let b = ReferenceParser.books[safe: n - 1] else { return "\(n)" }
+        switch language { case "en": return b.1; case "zh": return b.3; default: return b.2 }
     }
 }

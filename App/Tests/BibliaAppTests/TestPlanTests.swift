@@ -16,9 +16,12 @@ import Foundation
         }
     }
 
-    /// BUG-001 (replica/bugs.md): el parser acepta capítulo 0. Quitar withKnownIssue al corregirlo.
+    /// BUG-001 (replica/bugs.md): el parser rechaza capítulo 0 y versículo 0.
     @Test func gotoRejectsChapterZero() {
-        withKnownIssue("BUG-001") { #expect(throws: (any Error).self) { try ReferenceParser.parse("John 0") } }
+        #expect(throws: (any Error).self) { try ReferenceParser.parse("John 0") }
+        #expect(throws: (any Error).self) { try ReferenceParser.parse("John 0:1") }
+        #expect(throws: (any Error).self) { try ReferenceParser.parse("John 3:0") }
+        #expect(throws: (any Error).self) { try ReferenceParser.parse("John 3:1-0") }
     }
 
     @Test func resolverRejectsOutOfRangeChapters() {
@@ -76,5 +79,37 @@ import Foundation
         gone.reconcile(installed: ["CUV", "KJV"], primary: "CUV")
         #expect(!gone.order.contains("OLD") && gone.order.contains("KJV"))
         #expect(gone.enabled.contains("CUV") && gone.enabled.count >= 2)
+    }
+}
+
+@Suite struct BugfixTests {
+    /// BUG-002: apilado cuando cada columna tendría < 300 pt según el ancho realmente disponible.
+    @Test func parallelStackedFromAvailableWidth() {
+        // 3 columnas: (w - 48 - 16) / 3 >= 300 => w >= 964
+        #expect(ParallelMetrics.isStacked(availableWidth: 963, columns: 3, layout: .columns))
+        #expect(!ParallelMetrics.isStacked(availableWidth: 964, columns: 3, layout: .columns))
+        // 2 columnas: w >= 656
+        #expect(ParallelMetrics.isStacked(availableWidth: 655, columns: 2, layout: .columns))
+        #expect(!ParallelMetrics.isStacked(availableWidth: 656, columns: 2, layout: .columns))
+        #expect(ParallelMetrics.isStacked(availableWidth: 2000, columns: 3, layout: .interleaved))
+        // 800 de ventana - barra lateral 300 - inspector ~250 = 250 disponibles
+        #expect(ParallelMetrics.isStacked(availableWidth: 250, columns: 3, layout: .columns))
+    }
+
+    /// BUG-005
+    @Test func suggestionPicksBestOtherTranslation() {
+        let counts: [(id: String, count: Int)] = [("KJV", 0), ("CUV", 149), ("RV1909", 3)]
+        let s = SearchSuggestion.best(counts: counts, excluding: "KJV")
+        #expect(s == SearchSuggestion(translationId: "CUV", count: 149))
+        #expect(s?.message(query: "永生", current: "KJV") == "Sin resultados en KJV. «永生» aparece 149 veces en CUV")
+        #expect(SearchSuggestion.best(counts: [("KJV", 0), ("CUV", 0)], excluding: "KJV") == nil)
+        #expect(SearchSuggestion.best(counts: [("CUV", 5)], excluding: "CUV") == nil)
+    }
+
+    /// BUG-006
+    @Test func occurrenceBookNamesFollowVersionLanguage() {
+        #expect(BookNameLanguage.name(40, language: "en") == "Matthew")
+        #expect(BookNameLanguage.name(40, language: "zh") == "马太福音")
+        #expect(BookNameLanguage.name(40, language: "es") == "Mateo")
     }
 }

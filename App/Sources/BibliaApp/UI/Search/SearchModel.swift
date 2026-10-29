@@ -37,6 +37,8 @@ final class SearchModel {
     var history: [String] = []
     /// Términos de la búsqueda mostrada (los de `hits`), para resaltar.
     var terms: [String] = []
+    /// BUG-005: otra versión instalada con coincidencias cuando la actual no tiene ninguna.
+    var suggestion: SearchSuggestion?
 
     @ObservationIgnored private let state: AppState
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -105,7 +107,7 @@ final class SearchModel {
 
     private func reset() {
         generation += 1
-        hits = []; total = 0; perBook = [:]; selected = nil; terms = []
+        hits = []; total = 0; perBook = [:]; selected = nil; terms = []; suggestion = nil
         phase = .idle
         state.clearSearchHighlight()
     }
@@ -132,8 +134,28 @@ final class SearchModel {
             terms = SearchTerms.split(q)
             if !keepSelection { selected = nil }
             phase = p.hits.isEmpty ? .empty : .results
+            suggestion = nil
+            if p.hits.isEmpty { await computeSuggestion(query: q, current: tid, scope: sc, gen: gen) }
             if record { remember(q) }
         }
+    }
+
+    /// Cuenta, fuera del actor principal, las coincidencias en las demás versiones instaladas.
+    private func computeSuggestion(query q: String, current tid: String, scope sc: SearchRepository.Scope, gen: Int) async {
+        guard let db = state.bible else { return }
+        let others = state.translations.map(\.id).filter { $0 != tid }
+        let repo = SearchRepository(db: db)
+        let counts: [(id: String, count: Int)] = await Task.detached(priority: .utility) {
+            others.map { id in (id, (try? repo.page(q, translationId: id, scope: sc, limit: 1).total) ?? 0) }
+        }.value
+        guard !Task.isCancelled, gen == generation else { return }
+        suggestion = SearchSuggestion.best(counts: counts, excluding: tid)
+    }
+
+    func applySuggestion() {
+        guard let s = suggestion else { return }
+        translationOverride = s.translationId
+        scheduleSearch()
     }
 
     // MARK: abrir / moverse entre coincidencias (⌘G, ⇧⌘G)

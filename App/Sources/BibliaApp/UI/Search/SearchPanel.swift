@@ -89,8 +89,19 @@ struct SearchPanel: View {
         case .loading:
             VStack { Spacer(); ProgressView("Buscando…"); Spacer() }.frame(maxWidth: .infinity)
         case .empty:
+            VStack(spacing: 0) {
             ContentUnavailableView("Sin resultados para «\(search.trimmedQuery)»", systemImage: "magnifyingglass",
                                    description: Text("No hay coincidencias en \(search.translationId). Prueba otra palabra, otra versión o amplía el alcance."))
+            if let sg = search.suggestion {
+                VStack(spacing: 6) {
+                    Text(sg.message(query: search.trimmedQuery, current: search.translationId))
+                        .font(.callout).multilineTextAlignment(.center)
+                    Button("Buscar en \(sg.translationId)") { search.applySuggestion() }
+                }
+                .padding(12)
+                .accessibilityElement(children: .contain)
+            }
+            }
         case .failed(let msg):
             ContentUnavailableView("La búsqueda ha fallado", systemImage: "exclamationmark.triangle",
                                    description: Text(msg))

@@ -193,6 +193,25 @@ final class AppState {
 
     /// Traducción con números Strong (KJV).
     var strongTranslationId: String? { translations.first(where: \.hasStrongs)?.id }
+    /// Idioma de la versión con Strong (KJV -> "en"); los libros de las apariciones se nombran en él.
+    var strongLanguage: String { translations.first(where: \.hasStrongs)?.language ?? "en" }
+
+    /// Palabra abierta en el inspector con su contexto: (antes, palabra, después) recortado del versículo.
+    var strongContext: (before: String, word: String, after: String, verse: Int)? {
+        guard let sel = strongSelection, let sid = strongTranslationId,
+              let span = strongSpans[sel.verse]?.first(where: { $0.start == sel.start }) else { return nil }
+        var text: String?
+        if translationId == sid { text = items.first { $0.number == sel.verse }?.text }
+        else if let i = parallelColumns.firstIndex(where: { $0.id == sid }),
+                case .verse(let v)? = parallelRows.first(where: { $0.number == sel.verse })?.cells[safe: i] { text = v.text }
+        guard let t = text else { return nil }
+        let chars = Array(t)
+        guard span.end <= chars.count else { return nil }
+        let lo = max(0, span.start - 40), hi = min(chars.count, span.end + 40)
+        return ((lo > 0 ? "…" : "") + String(chars[lo..<span.start]), String(chars[span.start..<span.end]),
+                String(chars[span.end..<hi]) + (hi < chars.count ? "…" : ""), sel.verse)
+    }
+
     /// ¿Hay alguna versión con Strong a la vista (principal o columna paralela)?
     var strongAvailable: Bool {
         guard let id = strongTranslationId else { return false }

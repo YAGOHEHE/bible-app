@@ -142,7 +142,7 @@ private struct BlockView: View {
         switch k {
         case "ms": (size, weight, italic, center, color) = (1.15, .bold, false, true, theme.palette.heading)
         case "s2": (size, weight, italic, center, color) = (0.85, .semibold, true, false, theme.palette.heading)
-        case "d": (size, weight, italic, center, color) = (0.9, .regular, true, true, theme.palette.textSecondary)
+        case "d": (size, weight, italic, center, color) = (0.92, .regular, true, false, theme.palette.textSecondary)
         case "r": (size, weight, italic, center, color) = (0.78, .regular, true, false, theme.palette.textMuted)
         default: (size, weight, italic, center, color) = (0.92, .semibold, false, false, theme.palette.heading)
         }

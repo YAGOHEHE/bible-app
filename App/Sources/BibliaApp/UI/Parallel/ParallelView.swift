@@ -26,9 +26,10 @@ struct ParallelView: View {
                 .foregroundStyle(theme.palette.textSecondary)
             } else {
                 GeometryReader { geo in
-                    let n = CGFloat(state.parallelColumns.count)
-                    let per = (geo.size.width - 48 - (n - 1) * ParallelMetrics.columnGap) / n
-                    ParallelContent(stacked: state.parallelLayout == .interleaved || per < ParallelMetrics.minColumn)
+                    // BUG-002: ancho realmente disponible (tras barra lateral e inspector), no el de la ventana.
+                    ParallelContent(stacked: ParallelMetrics.isStacked(availableWidth: geo.size.width,
+                                                                       columns: state.parallelColumns.count,
+                                                                       layout: state.parallelLayout))
                 }
                 .id(state.chapterKey + state.parallelColumns.map(\.id).joined())
             }
@@ -43,6 +44,18 @@ struct ParallelView: View {
 enum ParallelMetrics {
     static let minColumn: CGFloat = 300
     static let columnGap: CGFloat = 8
+    static let sidePadding: CGFloat = 48
+
+    /// Ancho por columna dado el ancho disponible del panel de lectura.
+    static func columnWidth(availableWidth: CGFloat, columns: Int) -> CGFloat {
+        let n = CGFloat(max(1, columns))
+        return (availableWidth - sidePadding - (n - 1) * columnGap) / n
+    }
+
+    /// ¿Disposición apilada? Si el usuario eligió intercalado o cada columna cabría en < 300 pt.
+    static func isStacked(availableWidth: CGFloat, columns: Int, layout: ParallelLayout) -> Bool {
+        layout == .interleaved || columnWidth(availableWidth: availableWidth, columns: columns) < minColumn
+    }
 }
 
 private struct ParallelContent: View {
@@ -122,9 +135,11 @@ private struct ColumnHeaders: View {
             ForEach(Array(state.parallelColumns.enumerated()), id: \.element.id) { i, t in
                 HStack(spacing: 6) {
                     Text(t.id).font(.system(size: 13, weight: .semibold))
-                    Text(languageName(t.language)).font(.system(size: 11))
-                        .foregroundStyle(theme.palette.textSecondary)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                     if !stacked {
+                        Text(languageName(t.language)).font(.system(size: 11))
+                            .lineLimit(1).truncationMode(.tail)
+                            .foregroundStyle(theme.palette.textSecondary)
                         Text(t.name).font(.system(size: 11)).lineLimit(1).truncationMode(.tail)
                             .foregroundStyle(theme.palette.textSecondary)
                     }
@@ -132,6 +147,7 @@ private struct ColumnHeaders: View {
                 }
                 .foregroundStyle(theme.palette.textPrimary)
                 .padding(.horizontal, 10).padding(.vertical, 6)
+                .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(parallelTint(i, theme), in: RoundedRectangle(cornerRadius: 6))
                 .overlay(alignment: .leading) {
