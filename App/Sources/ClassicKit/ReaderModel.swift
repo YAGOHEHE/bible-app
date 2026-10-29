@@ -19,6 +19,8 @@ public final class ReaderModel {
     public private(set) var items: [DisplayVerse] = []
     public private(set) var layout: [LayoutPiece] = []
     public private(set) var recents: [Int] = []
+    public private(set) var parallel = ParallelPrefs()
+    private var itemsCache: [String: [DisplayVerse]] = [:]
     /// Versículo superior visible (se persiste).
     public private(set) var anchorVerse = 1
 
@@ -87,6 +89,7 @@ public final class ReaderModel {
         book = resume?.book ?? 43
         chapter = min(max(1, resume?.chapter ?? 3), max(1, chapterCounts[book - 1]))
         anchorVerse = resume?.verse ?? 1
+        parallel = ParallelPrefs.load(from: defaults, installed: translations.map(\.id), primary: translationId)
         try loadBookNames()
         try reloadChapter()
         touchRecent()
@@ -101,14 +104,63 @@ public final class ReaderModel {
         ResumeState(translation: translationId, book: book, chapter: chapter, verse: anchorVerse).save(to: defaults)
     }
 
+    private func loadItems(_ id: String) throws -> [DisplayVerse] {
+        guard let repo = verseRepo else { return [] }
+        let vs = try repo.chapter(translationId: id, book: book, chapter: chapter)
+        let hs = try repo.headings(translationId: id, book: book, chapter: chapter)
+        let ref = id == "KJV" ? nil : try repo.maxVerse(translationId: "KJV", book: book, chapter: chapter)
+        return ChapterBuilder.build(verses: vs, headings: hs, referenceMax: ref, translationId: id)
+    }
+
     private func reloadChapter() throws {
         guard let repo = verseRepo else { return }
-        let vs = try repo.chapter(translationId: translationId, book: book, chapter: chapter)
-        let hs = try repo.headings(translationId: translationId, book: book, chapter: chapter)
-        let ref = translationId == "KJV" ? nil : try repo.maxVerse(translationId: "KJV", book: book, chapter: chapter)
-        items = ChapterBuilder.build(verses: vs, headings: hs, referenceMax: ref, translationId: translationId)
+        itemsCache = [:]
+        items = try loadItems(translationId)
+        itemsCache[translationId] = items
         layout = try repo.layout(translationId: translationId, book: book, chapter: chapter)
     }
+
+    // MARK: parallel
+
+    public var columnIds: [String] { parallel.versions.columns(primary: translationId) }
+    public var glossIds: [String] { parallel.glosses.effective(primary: translationId, installed: translations.map(\.id)) }
+
+    public func language(of id: String) -> String { translations.first { $0.id == id }?.language ?? "es" }
+    public func columnInfos(_ ids: [String]) -> [(id: String, language: String)] { ids.map { ($0, language(of: $0)) } }
+
+    /// Filas alineadas por versículo para las versiones `ids` del capítulo actual (la principal debe ir primero).
+    public func rows(for ids: [String]) -> [ParallelRow] {
+        let cols: [ParallelColumnData] = ids.map { id in
+            if itemsCache[id] == nil { itemsCache[id] = (try? loadItems(id)) ?? [] }
+            return ParallelColumnData(translationId: id, language: language(of: id), items: itemsCache[id] ?? [])
+        }
+        return ParallelBuilder.build(book: book, chapter: chapter, columns: cols)
+    }
+
+    private func parallelChanged() {
+        parallel.save(to: defaults)
+        center.post(name: .classicParallelChanged, object: self)
+    }
+
+    public func setParallel(on: Bool) { guard parallel.on != on else { return }; parallel.on = on; parallelChanged() }
+    public func toggleParallel() { setParallel(on: !parallel.on) }
+    public func setParallelLayout(_ l: ParallelLayout) { guard parallel.layout != l else { return }; parallel.layout = l; parallelChanged() }
+    public func setVersionSet(_ v: VersionSet) {
+        var n = v
+        n.reconcile(installed: translations.map(\.id), primary: translationId)
+        guard n != parallel.versions else { return }
+        parallel.versions = n; parallelChanged()
+    }
+    public func setGlosses(_ g: GlossSet) { guard g != parallel.glosses else { return }; parallel.glosses = g; parallelChanged() }
+    /// Marca/desmarca una glosa; false si no cabe (máx. 3) o es la principal.
+    @discardableResult
+    public func toggleGloss(_ id: String) -> Bool {
+        var g = parallel.glosses
+        let ok = g.toggle(id, primary: translationId)
+        if ok { setGlosses(g) }
+        return ok
+    }
+    public func setGlossesOn(_ v: Bool) { guard parallel.glossesOn != v else { return }; parallel.glossesOn = v; parallelChanged() }
 
     private func announce(scrollTo verse: Int?, flash: ClosedRange<Int>? = nil) {
         let target = verse ?? 1
@@ -180,6 +232,8 @@ public final class ReaderModel {
         guard id != translationId, translations.contains(where: { $0.id == id }) else { return }
         let keep = anchorVerse
         translationId = id
+        parallel.versions.reconcile(installed: translations.map(\.id), primary: id)
+        parallel.save(to: defaults)
         try? loadBookNames()
         try? reloadChapter()
         center.post(name: .classicTranslationChanged, object: self)

@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var model: ReaderModel!
     var main: MainWindowController?
     var prefs: PreferencesWindowController?
+    var versions: VersionsWindowController?
     private var themeItems: [ThemeChoice: NSMenuItem] = [:]
     private var layoutItems: [VerseLayout: NSMenuItem] = [:]
     private var headingsItem: NSMenuItem?
@@ -29,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         let wc = MainWindowController(model: model, settings: settings)
         main = wc
+        wc.onOpenVersions = { [weak self] in self?.showVersions(nil) }
+        wc.reader.onOpenVersions = { [weak self] in self?.showVersions(nil) }
         wc.showWindow(nil)
         wc.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -45,6 +48,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if prefs == nil { prefs = PreferencesWindowController(settings: settings, model: model) }
         prefs?.show()
     }
+    @objc func showVersions(_ sender: Any?) {
+        if versions == nil { versions = VersionsWindowController(model: model) }
+        versions?.show()
+    }
+    @objc func toggleParallel(_ sender: Any?) { model.toggleParallel() }
+    @objc func pickParallelLayout(_ sender: NSMenuItem) {
+        if let l = ParallelLayout(rawValue: sender.representedObject as? String ?? "") { model.setParallelLayout(l); if !model.parallel.on { model.setParallel(on: true) } }
+    }
+    @objc func toggleGlosses(_ sender: Any?) { model.setGlossesOn(!model.parallel.glossesOn) }
     @objc func gotoReference(_ sender: Any?) { main?.window?.makeKeyAndOrderFront(nil); main?.focusGoto() }
     @objc func copyWithReference(_ sender: Any?) { main?.reader.copyWithReference() }
     @objc func prevChapter(_ sender: Any?) { model.goPrev() }
@@ -68,6 +80,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item.state = (item.representedObject as? String) == settings.theme.rawValue ? .on : .off
         case #selector(pickLayout(_:)):
             item.state = (item.representedObject as? String) == settings.layout.rawValue ? .on : .off
+        case #selector(toggleParallel(_:)):
+            item.state = model.parallel.on ? .on : .off
+        case #selector(pickParallelLayout(_:)):
+            item.state = (item.representedObject as? String) == model.parallel.layout.rawValue ? .on : .off
+        case #selector(toggleGlosses(_:)):
+            item.state = model.parallel.glossesOn ? .on : .off
+            return model.parallel.on && model.parallel.layout == .interleaved
         case #selector(toggleHeadings(_:)):
             item.state = settings.showHeadings ? .on : .off
         default: break
@@ -139,6 +158,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         for l in VerseLayout.allCases {
             let i = add(lm, l.label, #selector(pickLayout(_:))); i.representedObject = l.rawValue; layoutItems[l] = i
         }
+        view.addItem(.separator())
+        _ = add(view, "Vista paralela", #selector(toggleParallel(_:)), "\\")
+        let parRoot = NSMenuItem(title: "Disposición paralela", action: nil, keyEquivalent: ""); view.addItem(parRoot)
+        let pm = NSMenu(title: "Disposición paralela"); parRoot.submenu = pm
+        for l in ParallelLayout.allCases {
+            let i = add(pm, MainWindowController.layoutTitle(l), #selector(pickParallelLayout(_:))); i.representedObject = l.rawValue
+        }
+        _ = add(view, "Mostrar glosas", #selector(toggleGlosses(_:)), "g", [.command, .option])
+        _ = add(view, "Versiones…", #selector(showVersions(_:)), "v", [.command, .option])
+        view.addItem(.separator())
         headingsItem = add(view, "Mostrar títulos de sección", #selector(toggleHeadings(_:)))
         view.addItem(.separator())
         _ = add(view, "Mostrar/ocultar barra lateral", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control], target: nil)

@@ -30,6 +30,8 @@ public extension Notification.Name {
     static let classicChapterChanged = Notification.Name("org.biblia.clasica.chapterChanged")
     /// Cambió la versión (traducción) activa.
     static let classicTranslationChanged = Notification.Name("org.biblia.clasica.translationChanged")
+    /// Cambió algo de la vista paralela (activada, disposición, versiones, glosas).
+    static let classicParallelChanged = Notification.Name("org.biblia.clasica.parallelChanged")
     /// Cambió la lista de recientes.
     static let classicRecentsChanged = Notification.Name("org.biblia.clasica.recentsChanged")
 }

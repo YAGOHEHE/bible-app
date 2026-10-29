@@ -7,6 +7,9 @@ private extension NSToolbarItem.Identifier {
     static let next = NSToolbarItem.Identifier("next")
     static let translation = NSToolbarItem.Identifier("translation")
     static let goto = NSToolbarItem.Identifier("goto")
+    static let parallel = NSToolbarItem.Identifier("parallel")
+    static let layout = NSToolbarItem.Identifier("parLayout")
+    static let glosses = NSToolbarItem.Identifier("glosses")
     static let fontSmaller = NSToolbarItem.Identifier("fontSmaller")
     static let fontLarger = NSToolbarItem.Identifier("fontLarger")
 }
@@ -22,6 +25,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     private let nextButton = NSButton()
     private let translationPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 230, height: 26), pullsDown: false)
     private let gotoField = NSTextField(frame: NSRect(x: 0, y: 0, width: 190, height: 24))
+    private let parallelButton = NSButton()
+    private let layoutPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 176, height: 26), pullsDown: false)
+    private let glossesPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 92, height: 26), pullsDown: true)
+    var onOpenVersions: (() -> Void)?
     private let smaller = NSButton()
     private let larger = NSButton()
 
@@ -62,6 +69,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(refreshChrome), name: .classicChapterChanged, object: model)
         nc.addObserver(self, selector: #selector(refreshChrome), name: .classicTranslationChanged, object: model)
+        nc.addObserver(self, selector: #selector(parallelChromeChanged), name: .classicParallelChanged, object: model)
+        nc.addObserver(self, selector: #selector(parallelChromeChanged), name: .classicTranslationChanged, object: model)
         nc.addObserver(self, selector: #selector(themeChanged), name: .classicSettingsChanged, object: settings)
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(systemAppearanceChanged),
                                                             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil)
@@ -117,6 +126,77 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         if let i = model.translations.firstIndex(where: { $0.id == model.translationId }) { translationPopup.selectItem(at: i) }
     }
 
+    // MARK: parallel chrome
+
+    @objc private func parallelChromeChanged() {
+        syncParallelChrome()
+        syncToolbarItems()
+    }
+
+    private func syncToolbarItems() {
+        guard let tb = window?.toolbar else { return }
+        func index(_ id: NSToolbarItem.Identifier) -> Int? { tb.items.firstIndex { $0.itemIdentifier == id } }
+        func adjust(_ id: NSToolbarItem.Identifier, want: Bool, after: NSToolbarItem.Identifier) {
+            let idx = index(id)
+            if want, idx == nil, let a = index(after) { tb.insertItem(withItemIdentifier: id, at: a + 1) }
+            else if !want, let i = idx { tb.removeItem(at: i) }
+        }
+        let on = model.parallel.on
+        adjust(.layout, want: on, after: .parallel)
+        adjust(.glosses, want: on && model.parallel.layout == .interleaved, after: on ? .layout : .parallel)
+    }
+
+    func syncParallelChrome() {
+        parallelButton.state = model.parallel.on ? .on : .off
+        parallelButton.setAccessibilityValue(model.parallel.on ? "activada" : "desactivada")
+        layoutPopup.selectItem(at: ParallelLayout.allCases.firstIndex(of: model.parallel.layout) ?? 0)
+        rebuildGlossesMenu()
+    }
+
+    static func layoutTitle(_ l: ParallelLayout) -> String { l == .columns ? "Columnas" : "Intercalado (glosas)" }
+
+    private func rebuildGlossesMenu() {
+        let m = NSMenu(title: "Glosas")
+        m.autoenablesItems = false
+        m.addItem(NSMenuItem(title: "Glosas", action: nil, keyEquivalent: ""))      // título del botón desplegable
+        let on = NSMenuItem(title: "Mostrar glosas", action: #selector(toggleGlossesVisible(_:)), keyEquivalent: "")
+        on.target = self; on.state = model.parallel.glossesOn ? .on : .off
+        m.addItem(on)
+        m.addItem(.separator())
+        for g in GlossSet.grouped(model.translations, primary: model.translationId) {
+            let h = NSMenuItem(title: languageLabel(g.language), action: nil, keyEquivalent: "")
+            h.isEnabled = false
+            m.addItem(h)
+            for t in g.items {
+                let it = NSMenuItem(title: ReaderModel.menuTitle(t), action: #selector(glossPicked(_:)), keyEquivalent: "")
+                it.target = self
+                it.representedObject = t.id
+                it.state = model.parallel.glosses.contains(t.id) ? .on : .off
+                it.isEnabled = model.parallel.glosses.canAdd(t.id, primary: model.translationId)
+                it.indentationLevel = 1
+                m.addItem(it)
+            }
+        }
+        m.addItem(.separator())
+        let v = NSMenuItem(title: "Gestor de versiones…", action: #selector(openVersions(_:)), keyEquivalent: "")
+        v.target = self
+        m.addItem(v)
+        glossesPopup.menu = m
+        glossesPopup.setAccessibilityLabel("Glosas")
+        glossesPopup.toolTip = "Elegir glosas (máx. 3, sin la versión principal)"
+    }
+
+    @objc private func glossPicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        if !model.toggleGloss(id) { NSSound.beep() }
+    }
+    @objc private func toggleGlossesVisible(_ sender: Any?) { model.setGlossesOn(!model.parallel.glossesOn) }
+    @objc private func openVersions(_ sender: Any?) { onOpenVersions?() }
+    @objc private func parallelToggled(_ sender: Any?) { model.toggleParallel(); reader.focusReader() }
+    @objc private func layoutPicked(_ sender: NSPopUpButton) {
+        model.setParallelLayout(ParallelLayout.allCases[max(0, sender.indexOfSelectedItem)])
+    }
+
     // MARK: actions
 
     @objc func prevChapter(_ sender: Any?) { model.goPrev() }
@@ -161,10 +241,13 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     // MARK: NSToolbarDelegate
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.prev, .next, .translation, .goto, .fontSmaller, .fontLarger, .flexibleSpace, .space]
+        [.prev, .next, .translation, .parallel, .layout, .glosses, .goto, .fontSmaller, .fontLarger, .flexibleSpace, .space]
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.prev, .next, .translation, .flexibleSpace, .goto, .fontSmaller, .fontLarger]
+        var ids: [NSToolbarItem.Identifier] = [.prev, .next, .translation, .parallel]
+        if model.parallel.on { ids.append(.layout) }
+        if model.parallel.on && model.parallel.layout == .interleaved { ids.append(.glosses) }
+        return ids + [.flexibleSpace, .goto, .fontSmaller, .fontLarger]
     }
 
     private func configure(_ b: NSButton, image: NSImage?, title: String, action: Selector, size: NSSize) {
@@ -198,6 +281,21 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             translationPopup.toolTip = "Versión de la Biblia"
             rebuildTranslationPopup()
             item.label = "Versión"; fit(translationPopup)
+        case .parallel:
+            configure(parallelButton, image: ParallelIcon.image(), title: "Vista paralela", action: #selector(parallelToggled(_:)), size: NSSize(width: 36, height: 25))
+            parallelButton.setButtonType(.pushOnPushOff)
+            parallelButton.alternateImage = ParallelIcon.image(color: NSColor.alternateSelectedControlColor)
+            parallelButton.toolTip = "Vista paralela (⌘\\)"
+            item.label = "Paralela"; fit(parallelButton); syncParallelChrome()
+        case .layout:
+            if layoutPopup.numberOfItems == 0 {
+                for l in ParallelLayout.allCases { layoutPopup.addItem(withTitle: MainWindowController.layoutTitle(l)) }
+                layoutPopup.target = self; layoutPopup.action = #selector(layoutPicked(_:))
+                layoutPopup.setAccessibilityLabel("Disposición de la vista paralela")
+            }
+            item.label = "Disposición"; fit(layoutPopup); syncParallelChrome()
+        case .glosses:
+            item.label = "Glosas"; fit(glossesPopup); syncParallelChrome()
         case .goto:
             gotoField.placeholderString = "Ir a… (⌘L)"
             gotoField.bezelStyle = .roundedBezel
@@ -222,5 +320,25 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             return nil
         }
         return item
+    }
+}
+
+/// Icono de «vista paralela» (dos columnas), dibujado como plantilla: no usa SF Symbols (inexistentes en 10.13).
+enum ParallelIcon {
+    /// `color` nil = plantilla (se tiñe sola); con color = versión «activada» (acento del sistema).
+    static func image(color: NSColor? = nil) -> NSImage {
+        let img = NSImage(size: NSSize(width: 18, height: 14), flipped: false) { r in
+            (color ?? NSColor.black).setStroke()
+            let box = NSBezierPath(roundedRect: r.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2)
+            box.lineWidth = 1.3
+            box.stroke()
+            let mid = NSBezierPath()
+            mid.move(to: NSPoint(x: r.midX, y: r.minY + 1)); mid.line(to: NSPoint(x: r.midX, y: r.maxY - 1))
+            mid.lineWidth = 1.3
+            mid.stroke()
+            return true
+        }
+        img.isTemplate = color == nil
+        return img
     }
 }

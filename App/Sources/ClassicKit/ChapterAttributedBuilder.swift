@@ -59,8 +59,18 @@ public struct BuiltChapter {
     }
 }
 
+/// Texto que se inserta tras un bloque (líneas de glosa bajo un versículo).
+public struct BlockExtra {
+    public init(text: NSAttributedString, verse: Int, trailing: CGFloat) { self.text = text; self.verse = verse; self.trailing = trailing }
+    public let text: NSAttributedString
+    public let verse: Int
+    /// Interlineado de la última línea (se descuenta de la separación del bloque siguiente).
+    public let trailing: CGFloat
+}
+
 public enum ChapterAttributedBuilder {
-    public static func build(title: String, blocks: [BookBlock], style s: ReaderStyle) -> BuiltChapter {
+    public static func build(title: String, blocks: [BookBlock], style s: ReaderStyle,
+                             extras: [Int: BlockExtra] = [:], afterTitle: NSAttributedString? = nil) -> BuiltChapter {
         let pt = s.pt, pal = s.palette
         let body = ReaderFonts.reading(latin: s.latin, size: pt)
         let out = NSMutableAttributedString()
@@ -89,6 +99,7 @@ public enum ChapterAttributedBuilder {
         out.append(NSAttributedString(string: title + "\n", attributes: [
             .font: titleFont, .foregroundColor: pal.textPrimary,
             .paragraphStyle: para(after: pt * 0.8)]))
+        if let n = afterTitle { out.append(n) }
 
         // AppKit suma `lineSpacing` también tras la última línea de cada párrafo; se descuenta de la separación
         // superior del párrafo siguiente para que el ritmo vertical sea el del lector SwiftUI.
@@ -151,7 +162,7 @@ public enum ChapterAttributedBuilder {
                             .bibliaVerse: piece.verse, .bibliaVerseNumber: true]))
                     }
                     var attrs: [NSAttributedString.Key: Any] = [
-                        .font: body, .foregroundColor: pal.textPrimary, .paragraphStyle: ps, .bibliaVerse: piece.verse]
+                        .font: body, .foregroundColor: piece.text == "\u{2014}" ? pal.textMuted : pal.textPrimary, .paragraphStyle: ps, .bibliaVerse: piece.verse]
                     if kern != 0 { attrs[.kern] = kern }
                     var t = piece.text
                     if i < b.pieces.count - 1, s.latin { t += " " }
@@ -164,6 +175,12 @@ public enum ChapterAttributedBuilder {
                 if b.pieces.isEmpty { nl = NSAttributedString(string: "") }
                 out.append(nl)
                 prev = b; blankBefore = false
+            }
+            if let ex = extras[b.id] {
+                let st = out.length
+                out.append(ex.text)
+                extend(ex.verse, NSRange(location: st, length: out.length - st))
+                trailing = ex.trailing
             }
         }
         // El primer versículo siempre muestra el título del capítulo.
