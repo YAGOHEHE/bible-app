@@ -46,6 +46,16 @@ struct VerseRepository {
         }
     }
 
+    /// Versículos de un rango dentro de un capítulo (los que no existan en la versión simplemente faltan).
+    func verses(translationId: String, book: Int, chapter: Int, from: Int, to: Int) throws -> [Verse] {
+        try db.reader.read {
+            try Verse.fetchAll($0, sql: """
+                SELECT * FROM verses WHERE translation_id = ? AND book = ? AND chapter = ? AND verse BETWEEN ? AND ?
+                ORDER BY verse
+                """, arguments: [translationId, book, chapter, from, to])
+        }
+    }
+
     func headings(translationId: String, book: Int, chapter: Int) throws -> [Heading] {
         try db.reader.read {
             try Heading.fetchAll($0, sql: """

@@ -34,6 +34,7 @@ extension AppState {
     // MARK: anotaciones del capítulo
 
     func reloadAnnotations() {
+        annotationVersion += 1
         chapterAnnotations = (try? annotations?.chapter(book: book, chapter: chapter)) ?? ChapterAnnotations()
         if let db = bible {
             crossRefCounts = (try? CrossRefRepository(db: db).counts(book: book, chapter: chapter)) ?? [:]
@@ -113,14 +114,16 @@ extension AppState {
 
     // MARK: notas / referencias (la tarea 5 rellena el contenido de las pestañas)
 
-    func beginNote(for range: ClosedRange<Int>) {
+    func beginNote(for range: ClosedRange<Int>, selecting id: Int64? = nil) {
         noteTarget = range
+        noteRequest = NoteRequest(token: noteRequest.token + 1, book: book, chapter: chapter, range: range, selecting: id)
         inspectorTab = .note
         showInspector = true
     }
 
     func showCrossRefs(for range: ClosedRange<Int>) {
         refsTarget = range
+        refsBook = book; refsChapter = chapter
         inspectorTab = .refs
         showInspector = true
     }
@@ -180,6 +183,46 @@ extension AppState {
 
     /// Abre la nota desde el icono de nota del texto.
     func openNoteIcon(id: Int64) {
-        if let n = chapterAnnotations.notes.first(where: { $0.id == id }) { beginNote(for: n.range) }
+        if let n = chapterAnnotations.notes.first(where: { $0.id == id }) { beginNote(for: n.range, selecting: id) }
+    }
+}
+
+
+// MARK: texto de versículos, referencias cruzadas y panel «Notas»
+
+extension AppState {
+    /// Texto de un rango en la versión actual (`nil` si ningún versículo existe en ella).
+    func passageText(book b: Int, chapter c: Int, from: Int, to: Int) -> String? {
+        guard let db = bible else { return nil }
+        let vs = (try? VerseRepository(db: db).verses(translationId: translationId, book: b, chapter: c, from: from, to: to)) ?? []
+        return CrossRefList.join(vs.map(\.text), language: language)
+    }
+
+    /// Referencias cruzadas de los versículos `refsTarget` (origen: `refsBook`/`refsChapter`), unidas y ordenadas por votos.
+    func crossRefs() -> [CrossRef] {
+        guard let db = bible, let r = refsTarget, refsBook > 0 else { return [] }
+        let repo = CrossRefRepository(db: db)
+        return CrossRefList.merge(r.map { (try? repo.refs(book: refsBook, chapter: refsChapter, verse: $0)) ?? [] })
+    }
+
+    func crossRefRow(_ r: CrossRef) -> CrossRefRow {
+        CrossRefList.row(r, bookName: { self.bookName($0) },
+                         text: { self.passageText(book: $0.book, chapter: $0.chapter, from: $0.verseFrom ?? 1, to: $0.verseTo ?? $0.verseFrom ?? 1) })
+    }
+
+    /// Navega a una referencia (historial «jump», destello); si el versículo no existe en la versión, queda en el capítulo.
+    func navigate(to ref: BibleRef) {
+        guard (1...66).contains(ref.book) else { return }
+        searchTerms = []
+        open(ref: ref)
+    }
+
+    func navigate(to item: AnnotationItem) {
+        navigate(to: BibleRef(book: item.book, chapter: item.chapter, verseFrom: item.verseStart, verseTo: item.verseEnd))
+        if item.kind == .note { beginNote(for: item.verseStart...max(item.verseStart, item.verseEnd), selecting: item.noteId) }
+    }
+
+    func referenceLabel(for item: AnnotationItem) -> String {
+        RefLabel.text(bookName: bookName(item.book), chapter: item.chapter, from: item.verseStart, to: item.verseEnd)
     }
 }

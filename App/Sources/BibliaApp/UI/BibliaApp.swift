@@ -61,6 +61,7 @@ extension BibliaApp {
         }
         if d.bool(forKey: "showHistory") { state.showHistory = true }
         applyAnnotationArguments(d)
+        applyNoteArguments(d)
         // Ganchos solo para pruebas manuales (replica/test-plan.md).
         if d.object(forKey: "startParallel") != nil { state.setParallel(d.bool(forKey: "startParallel")) }
         if d.string(forKey: "startParallelLayout") == "interleaved" { state.setParallelLayout(.interleaved) }
@@ -199,6 +200,43 @@ struct ReaderCommands: Commands {
                 .keyboardShortcut("i", modifiers: .command)
             Button("Historial…") { state.showHistory = true }
                 .keyboardShortcut("y", modifiers: .command)
+        }
+    }
+}
+
+extension BibliaApp {
+    /// `-openNote "Rom 8:28"` (crea una nota de ejemplo si no hay y abre la pestaña Nota; `-notePreview 1` muestra la vista
+    /// previa), `-showRefs "John 3:16"` (pestaña Referencias), `-sidebar notes|search|books`. Solo capturas y pruebas manuales.
+    @MainActor private func applyNoteArguments(_ d: UserDefaults) {
+        func resolve(_ text: String) -> BibleRef? {
+            if case .success(let r) = GotoResolver.resolve(text, chapterCounts: state.chapterCounts) { return r }
+            return nil
+        }
+        if let t = d.string(forKey: "openNote"), let ref = resolve(t), let a = ref.verseFrom {
+            let b = ref.verseTo ?? a
+            state.navigate(to: ref)
+            if (try? state.annotations?.chapter(book: ref.book, chapter: ref.chapter).notes.contains { $0.overlaps(a...b) }) != true {
+                _ = try? state.annotations?.addNote(book: ref.book, chapter: ref.chapter, verseStart: a, verseEnd: b, body: """
+                    **Todo coopera para bien**
+                    Ver también *Gn 50:20* y [Rom 5:3-5](https://example.org).
+
+                    - Dios obra en *todas* las cosas
+                    - Para los que le aman
+                    """)
+                state.reloadAnnotations()
+            }
+            state.noteEditor.preview = d.bool(forKey: "notePreview")
+            state.beginNote(for: a...b)
+        }
+        if let t = d.string(forKey: "showRefs"), let ref = resolve(t), let a = ref.verseFrom {
+            state.navigate(to: ref)
+            state.showCrossRefs(for: a...(ref.verseTo ?? a))
+        }
+        switch d.string(forKey: "sidebar") {
+        case "notes": search.deactivate(); state.showNotesPanel = true
+        case "search": search.activate()
+        case "books": search.deactivate(); state.showNotesPanel = false
+        default: break
         }
     }
 }

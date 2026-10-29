@@ -205,7 +205,8 @@ private struct ParallelRowView: View {
         .contextMenu { VerseMenuItems(scope: state.scope(forContextVerse: row.number)) }
         .popover(isPresented: Binding(
             get: { state.actionBarVisible && state.actionBarVerse == row.number && selected },
-            set: { if !$0 { state.actionBarVisible = false } }), arrowEdge: .bottom) {
+            set: { if !$0 { state.actionBarVisible = false } }),
+                 attachmentAnchor: .point(UnitPoint(x: 0.5, y: 0.04)), arrowEdge: .bottom) {   // arriba de la fila: las filas altas no lo sacan de la ventana
             VerseActionBar(scope: nil)
         }
     }

@@ -31,6 +31,14 @@ final class AppState {
     var inspectorTab: InspectorTab = .strong
     /// Rangos pedidos con «Anotar» / «Referencias» (los usan el editor y la lista de la tarea 5).
     var noteTarget: ClosedRange<Int>?
+    /// Última petición de abrir el editor de notas (libro/capítulo incluidos: el lector puede cambiar de capítulo).
+    var noteRequest = NoteRequest()
+    var refsBook = 0
+    var refsChapter = 0
+    /// +1 con cada cambio de anotaciones (el panel «Notas» se refresca al observarlo).
+    var annotationVersion = 0
+    /// La barra lateral muestra el panel «Notas».
+    var showNotesPanel = false
     var refsTarget: ClosedRange<Int>?
     var anchorVerse = 1
     var scrollRequest = ScrollRequest(token: 0, verse: 1)
@@ -65,7 +73,15 @@ final class AppState {
     var showHistory = false
 
     var bible: BibleDatabase?
-    @ObservationIgnored var user: UserStore? { didSet { annotations = user.map { AnnotationStore(user: $0, defaults: defaults) } } }
+    @ObservationIgnored var user: UserStore? {
+        didSet {
+            annotations = user.map { AnnotationStore(user: $0, defaults: defaults) }
+            noteEditor.store = annotations
+            annotationList.store = annotations
+        }
+    }
+    @ObservationIgnored let noteEditor = NoteEditorModel()
+    @ObservationIgnored let annotationList = AnnotationListModel()
     @ObservationIgnored private(set) var annotations: AnnotationStore?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var verseRepo: VerseRepository?
@@ -78,6 +94,12 @@ final class AppState {
     init(settings: AppSettings? = nil, defaults: UserDefaults = .standard) {
         self.settings = settings ?? AppSettings(defaults: defaults)
         self.defaults = defaults
+        noteEditor.onChange = { [weak self] in self?.reloadAnnotations() }
+        annotationList.onMutation = { [weak self] in self?.reloadAnnotations() }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                               queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.noteEditor.flush() }
+        }
     }
 
     // MARK: derived

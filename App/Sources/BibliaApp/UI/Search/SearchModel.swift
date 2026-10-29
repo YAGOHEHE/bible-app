@@ -63,6 +63,7 @@ final class SearchModel {
     // MARK: activación (⌘F)
 
     func activate() {
+        state.showNotesPanel = false
         active = true
         focusToken += 1
         loadHistory()

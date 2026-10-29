@@ -267,13 +267,16 @@ struct TextHighlight: Equatable {
         }
     }
 
-    func apply(to body: inout AttributedString, plain: String, theme: Theme) {
+    /// Coincidencias de búsqueda: fondo + negrita + subrayado, para distinguirlas de un resaltado amarillo del usuario.
+    func apply(to body: inout AttributedString, plain: String, theme: Theme, latin: Bool = true) {
         guard !terms.isEmpty else { return }
         for r in SearchHighlighter.ranges(in: plain, terms: terms) {
             if let lo = AttributedString.Index(r.lowerBound, within: body),
                let hi = AttributedString.Index(r.upperBound, within: body) {
                 body[lo..<hi].backgroundColor = theme.palette.searchHighlight
                 body[lo..<hi].foregroundColor = theme.palette.textPrimary
+                body[lo..<hi].font = theme.readingFont(latin: latin).bold()
+                body[lo..<hi].underlineStyle = .single
             }
         }
     }
@@ -326,7 +329,7 @@ enum VerseText {
             body.foregroundColor = theme.palette.textPrimary
             if let bg = bodyBackground(va?.color, selected: isSel, theme: theme) { body.backgroundColor = bg }
             if !isSel, hl.flashes(v.number, v.endNumber) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
-            hl.apply(to: &body, plain: v.text, theme: theme)
+            hl.apply(to: &body, plain: v.text, theme: theme, latin: latin)
             hl.applyStrong(to: &body, verse: v.number, offset: 0, count: v.text.count, theme: theme)
             if va?.isBookmarked == true { out += bookmarkGlyph(theme: theme) }
             out += numberRun(v.label, verse: v.number, theme: theme, selected: isSel, links: links)
@@ -353,7 +356,7 @@ enum VerseText {
             body.foregroundColor = theme.palette.textPrimary
             if let bg = bodyBackground(va?.color, selected: isSel, theme: theme) { body.backgroundColor = bg }
             if !isSel, hl.flashes(p.verse, p.end) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
-            hl.apply(to: &body, plain: p.text, theme: theme)
+            hl.apply(to: &body, plain: p.text, theme: theme, latin: latin)
             hl.applyStrong(to: &body, verse: p.verse, offset: p.textOffset, count: p.text.count, theme: theme)
             if links, body.link == nil { body.link = URL(string: "verse://\(p.verse)") }
             out += body

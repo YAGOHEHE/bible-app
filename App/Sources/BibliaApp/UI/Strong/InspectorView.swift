@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Inspector con pestañas: Strong · Nota · Referencias. Nota y Referencias son marcadores de posición
-/// hasta la tarea 5 (editor de notas y lista de referencias cruzadas).
+/// Inspector con pestañas: Strong · Nota · Referencias.
 struct InspectorView: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
@@ -15,24 +14,11 @@ struct InspectorView: View {
             .padding(10)
             switch state.inspectorTab {
             case .strong: StrongPanel()
-            case .note: placeholder("Nota", range: state.noteTarget, symbol: "square.and.pencil")
-            case .refs: placeholder("Referencias", range: state.refsTarget, symbol: "arrow.triangle.branch")
+            case .note: NoteTab()
+            case .refs: RefsTab()
             }
         }
         .background(theme.palette.surface)
-    }
-
-    private func placeholder(_ title: String, range: ClosedRange<Int>?, symbol: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: symbol).font(.system(size: 28)).foregroundStyle(theme.palette.textMuted)
-            Text(title).font(.headline).foregroundStyle(theme.palette.textPrimary)
-            Text(range.map { r in
-                "\(state.bookName(state.book)) \(state.chapter):" + (r.lowerBound == r.upperBound ? "\(r.lowerBound)" : "\(r.lowerBound)–\(r.upperBound)")
-            } ?? "Selecciona un versículo")
-                .font(.callout).foregroundStyle(theme.palette.textSecondary)
-            Text("Próximamente").font(.caption).foregroundStyle(theme.palette.textMuted)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
+        .onChange(of: state.inspectorTab) { old, _ in if old == .note { state.noteEditor.flush() } }
     }
 }

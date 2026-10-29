@@ -19,7 +19,9 @@ struct RootView: View {
             NavigationSplitView {
                 VStack(spacing: 0) {
                     SidebarModeBar()
-                    if search.active { SearchPanel() } else { BookSidebar() }
+                    if search.active { SearchPanel() }
+                    else if state.showNotesPanel { NotesPanel() }
+                    else { BookSidebar() }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 460)

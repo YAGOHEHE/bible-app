@@ -1,18 +1,31 @@
 import SwiftUI
 
-/// Selector de la barra lateral: Libros (S02) | Buscar (S05).
+/// Selector de la barra lateral: Libros (S02) | Buscar (S05) | Notas.
 struct SidebarModeBar: View {
+    @Environment(AppState.self) private var state
     @Environment(SearchModel.self) private var search
 
+    private enum Mode { case books, search, notes }
+
     var body: some View {
-        Picker("Barra lateral", selection: Binding(get: { search.active }, set: { $0 ? search.activate() : search.deactivate() })) {
-            Label("Libros", systemImage: "books.vertical").tag(false)
-            Label("Buscar", systemImage: "magnifyingglass").tag(true)
+        let mode = Binding<Mode>(
+            get: { search.active ? .search : state.showNotesPanel ? .notes : .books },
+            set: { m in
+                switch m {
+                case .books: search.deactivate(); state.showNotesPanel = false
+                case .search: search.activate()
+                case .notes: search.deactivate(); state.showNotesPanel = true
+                }
+            })
+        Picker("Barra lateral", selection: mode) {
+            Label("Libros", systemImage: "books.vertical").tag(Mode.books)
+            Label("Buscar", systemImage: "magnifyingglass").tag(Mode.search)
+            Label("Notas", systemImage: "square.and.pencil").tag(Mode.notes)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
         .padding(.horizontal, 10).padding(.top, 8)
-        .help("Libros o búsqueda (⌘F)")
+        .help("Libros, búsqueda (⌘F) o notas")
         .accessibilityLabel("Modo de la barra lateral")
     }
 }
