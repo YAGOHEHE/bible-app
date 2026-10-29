@@ -27,6 +27,12 @@ final class AppState {
     var recentBooks: [Int] = []
     var chapterCounts = [Int](repeating: 0, count: 66)
     var highlightedVerse: Int?
+    /// Términos de la última búsqueda abierta: se resaltan en el texto del lector.
+    var searchTerms: [String] = []
+    /// Versículos destacados tras un salto (se desvanecen) y su opacidad actual (1...0).
+    var flashVerses: Set<Int> = []
+    var flashAlpha: Double = 0
+    var showGoto = false
     var toast: String?
     // Vista paralela (S03) y gestor de versiones (S04)
     var parallelOn = false
@@ -43,6 +49,7 @@ final class AppState {
     @ObservationIgnored private var transRepo: TranslationRepository?
     @ObservationIgnored private var lastClickedVerse: Int?
     @ObservationIgnored private var tokenCounter = 0
+    @ObservationIgnored private var flashTask: Task<Void, Never>?
     @ObservationIgnored let settings: AppSettings
 
     init(settings: AppSettings? = nil, defaults: UserDefaults = .standard) {
@@ -219,9 +226,9 @@ final class AppState {
         ResumeState.saveRecents(recentBooks, to: defaults)
     }
 
-    private func record(kind: String) {
+    private func record(kind: String, verse: Int? = nil) {
         try? user?.addHistory(translationId: translationId,
-                              ref: BibleRef(book: book, chapter: chapter, verseFrom: nil, verseTo: nil), kind: kind)
+                              ref: BibleRef(book: book, chapter: chapter, verseFrom: verse, verseTo: verse), kind: kind)
     }
 
     // MARK: navigation (F02)
@@ -241,7 +248,88 @@ final class AppState {
         book = p.book; chapter = p.chapter
         reloadChapter(scrollTo: verse)
         touchRecent()
-        record(kind: kind)
+        record(kind: kind, verse: verse)
+    }
+
+    // MARK: ir a referencia (⌘L) y abrir resultados de búsqueda (F04, F05)
+
+    enum GotoOutcome: Equatable {
+        case went(BibleRef)
+        case failed(GotoFailure)
+    }
+
+    /// Mensaje de error en línea para el campo "Ir a referencia".
+    func gotoMessage(_ f: GotoFailure, input: String) -> String {
+        switch f {
+        case .notReference:
+            return "No se reconoce «\(input.trimmingCharacters(in: .whitespaces))». Ejemplos: \(GotoResolver.examples)"
+        case .chapterOutOfRange(let b, let m):
+            return "\(bookName(b)) tiene \(m) capítulos."
+        case .verseOutOfRange(let m):
+            return "Este capítulo tiene \(m) versículos."
+        }
+    }
+
+    /// Interpreta el texto, navega (historial 'jump'), desplaza al versículo y lo destaca.
+    @discardableResult
+    func goTo(_ text: String) -> GotoOutcome {
+        switch GotoResolver.resolve(text, chapterCounts: chapterCounts) {
+        case .failure(let f): return .failed(f)
+        case .success(var ref):
+            if let a = ref.verseFrom, let mx = try? verseRepo?.maxVerse(translationId: translationId, book: ref.book, chapter: ref.chapter) {
+                if a > mx { return .failed(.verseOutOfRange(max: mx)) }
+                ref.verseTo = min(ref.verseTo ?? a, mx)
+            }
+            searchTerms = []
+            open(ref: ref)
+            return .went(ref)
+        }
+    }
+
+    /// Navega a la referencia y destaca sus versículos (si los tiene).
+    func open(ref: BibleRef) {
+        book = ref.book; chapter = ref.chapter
+        reloadChapter(scrollTo: ref.verseFrom)
+        touchRecent()
+        record(kind: "jump", verse: ref.verseFrom)
+        if let a = ref.verseFrom { flash(verses: a...(ref.verseTo ?? a)) } else { clearFlash() }
+    }
+
+    /// Abre un resultado de búsqueda en la versión buscada, con las coincidencias resaltadas.
+    func openHit(_ hit: SearchHit, terms: [String]) {
+        if hit.translationId != translationId, translations.contains(where: { $0.id == hit.translationId }) {
+            setTranslation(hit.translationId)
+        }
+        searchTerms = terms
+        open(ref: BibleRef(book: hit.book, chapter: hit.chapter, verseFrom: hit.verse, verseTo: hit.verse))
+    }
+
+    func clearSearchHighlight() { searchTerms = [] }
+
+    /// Destaca versículos ~3 s y los desvanece (sin animación gradual con "Reducir movimiento").
+    func flash(verses: ClosedRange<Int>) {
+        flashTask?.cancel()
+        flashVerses = Set(verses)
+        flashAlpha = 1
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        flashTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: reduce ? 3_000_000_000 : 2_400_000_000)
+            if !reduce {
+                for step in 1...6 {
+                    if Task.isCancelled { return }
+                    self?.flashAlpha = 1 - Double(step) / 6
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+            }
+            if Task.isCancelled { return }
+            self?.clearFlash()
+        }
+    }
+
+    func clearFlash() {
+        flashTask?.cancel()
+        flashVerses = []
+        flashAlpha = 0
     }
 
     func setTranslation(_ id: String) {
@@ -269,6 +357,7 @@ final class AppState {
     // MARK: selection & copy (F10)
 
     func clickVerse(_ n: Int, shift: Bool, command: Bool) {
+        if !flashVerses.isEmpty { clearFlash() }
         let nums = parallelOn ? parallelNumbers : items.map(\.number)
         if shift, let last = lastClickedVerse,
            let a = nums.firstIndex(of: last), let b = nums.firstIndex(of: n) {

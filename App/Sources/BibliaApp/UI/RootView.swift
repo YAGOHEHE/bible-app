@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppState.self) private var state
+    @Environment(SearchModel.self) private var search
 
     var body: some View {
         switch state.load {
@@ -16,8 +17,12 @@ struct RootView: View {
                                    description: Text(msg)).frame(minWidth: 800, minHeight: 500)
         case .ready:
             NavigationSplitView {
-                BookSidebar()
-                    .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+                VStack(spacing: 0) {
+                    SidebarModeBar()
+                    if search.active { SearchPanel() } else { BookSidebar() }
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 460)
             } detail: {
                 if state.parallelOn { ParallelView() } else { ReaderView() }
             }
@@ -26,6 +31,9 @@ struct RootView: View {
                                 ? state.parallelColumns.map(\.id).joined(separator: " · ")
                                 : (state.currentTranslation?.name ?? state.translationId))
             .frame(minWidth: 800, minHeight: 500)
+            .overlay(alignment: .top) {
+                if state.showGoto { GotoBar().transition(.opacity) }
+            }
             .toolbar { ReaderToolbar() }
             .sheet(isPresented: Binding(get: { state.showVersions }, set: { state.showVersions = $0 })) {
                 VersionManagerView()
@@ -51,6 +59,9 @@ struct ReaderToolbar: ToolbarContent {
                 .accessibilityLabel(state.nextPosition.map { "Siguiente, \(state.bookName($0.book)) \($0.chapter)" } ?? "Siguiente")
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            Button { state.showGoto = true } label: { Image(systemName: "arrow.turn.down.right") }
+                .help("Ir a referencia (⌘L)")
+                .accessibilityLabel("Ir a referencia")
             Picker("Versión", selection: Binding(get: { state.translationId }, set: { state.setTranslation($0) })) {
                 ForEach(state.translations) { Text($0.id).tag($0.id) }
             }
@@ -79,6 +90,5 @@ struct ReaderToolbar: ToolbarContent {
 }
 
 // Stubs de siguientes cortes.
-struct SearchResultsView: View { var body: some View { Text("Búsqueda (S05)") } }
 struct StrongPanel: View { var body: some View { Text("Strong (S06)") } }
 struct HistoryView: View { var body: some View { Text("Historial (S07)") } }

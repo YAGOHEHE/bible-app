@@ -4,7 +4,7 @@ Retomar la lectura en el último libro/capítulo/versículo al abrir,lectura,mus
 Capítulo anterior/siguiente (botones y atajos de teclado),lectura,must,yes,yes,"en el original ""翻页"""
 Selector de libro y capítulo (S02),navegación,must,yes,yes,cuadrícula de libros AT/NT y capítulos
 Libros recientes en el selector,navegación,should,yes,yes,CatalogBookHistroy
-"Ir a referencia escribiendo ""Juan 3:16"" / ""约3:16"" / ""John 3:16""",navegación,must,yes,no,parser con alias de libros en zh/es/en
+"Ir a referencia escribiendo ""Juan 3:16"" / ""约3:16"" / ""John 3:16""",navegación,must,yes,yes,parser con alias de libros en zh/es/en
 Nombres de libros en el idioma de cada versión,lectura,should,yes,yes,tabla Books por versión
 Títulos de sección (小标题) antes del versículo,lectura,must,yes,yes,tabla Titles opcional
 Enlaces de referencia dentro de los títulos de sección (popover con el pasaje),lectura,could,yes,no,solo modo normal en el original
@@ -31,13 +31,13 @@ Traducción literal (直译) y análisis de palabra (字汇分析),estudio,could
 Textos originales griego/hebreo como versiones,contenido,could,yes,no,solo si hay texto libre disponible (p. ej. WLC/SBLGNT con licencia abierta)
 Etiquetas de morfología <WTG...>,estudio,could,yes,no,
 Palabras no traducidas marcadas con {…},lectura,could,yes,no,
-Búsqueda de texto (S05),búsqueda,must,yes,no,
-Búsqueda en chino (FTS con tokenización por carácter/n-gramas),búsqueda,must,yes,no,parte difícil
-Alcance de búsqueda: AT / NT / libro,búsqueda,should,yes,no,
-"Operador ""/"" como OR en la búsqueda",búsqueda,should,yes,no,changelog 2.0.4
-Historial de búsquedas,búsqueda,should,yes,no,SearchHistory
-Abrir resultado de búsqueda en el lector y resaltar coincidencia,búsqueda,must,yes,no,
-Estado sin resultados en la búsqueda,búsqueda,must,yes,no,
+Búsqueda de texto (S05),búsqueda,must,yes,yes,
+Búsqueda en chino (FTS con tokenización por carácter/n-gramas),búsqueda,must,yes,yes,LIKE para 1-2 caracteres + trigram; resaltado por carácter
+Alcance de búsqueda: AT / NT / libro,búsqueda,should,yes,yes,
+"Operador ""/"" como OR en la búsqueda",búsqueda,should,yes,yes,changelog 2.0.4
+Historial de búsquedas,búsqueda,should,yes,yes,SearchHistory
+Abrir resultado de búsqueda en el lector y resaltar coincidencia,búsqueda,must,yes,yes,
+Estado sin resultados en la búsqueda,búsqueda,must,yes,yes,
 Historial de lectura automático (翻页/跳转) (S07),historial,should,yes,no,tabla Auto
 Historial manual / marcadores,historial,could,yes,no,tabla Manual
 Tamaño de fuente (porcentaje),ajustes,must,yes,yes,FontSizePercent
@@ -46,7 +46,7 @@ Esquemas de color (uno por modo claro/oscuro),ajustes,could,yes,no,
 Tipografía mixta CJK/Latín con fuentes elegibles,ajustes,should,yes,no,
 Ajustes de pantalla S08 (versiones; fuente; tema; formato),ajustes,must,yes,yes,
 Mostrar/ocultar panel de comentario/original,ajustes,should,yes,no,CommentAndOriginal
-Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,no,adaptación nativa de escritorio
+Atajos de teclado de macOS (menú; ⌘F; ⌘G ir a referencia),plataforma,should,partial,partial,adaptación nativa de escritorio (hecho: ⌘F, ⌘L, ⌘G; falta ⌃⌘S y resto)
 Varias ventanas / restauración de ventana,plataforma,could,no,no,propio del clon en macOS
 Nombres de personas y lugares subrayados con enlace a diccionario,estudio,could,yes,no,necesita diccionario propio; fuera de v1
 Referencias cruzadas (串珠) como enlaces,estudio,could,yes,no,hay datos abiertos (Treasury of Scripture Knowledge)

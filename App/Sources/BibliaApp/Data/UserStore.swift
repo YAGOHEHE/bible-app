@@ -48,14 +48,25 @@ final class UserStore {
 
     func clearHistory() throws { try queue.write { try $0.execute(sql: "DELETE FROM history") } }
 
+    static let maxSearches = 50
+
+    /// Guarda la consulta (la más reciente primero; repetida = se actualiza su fecha; máximo 50).
     func addSearch(_ q: String, at: Date = Date()) throws {
+        let q = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
         try queue.write {
             try $0.execute(sql: "INSERT INTO search_history(query, at) VALUES (?,?) ON CONFLICT(query) DO UPDATE SET at = excluded.at",
                            arguments: [q, at.timeIntervalSince1970])
+            try $0.execute(sql: """
+                DELETE FROM search_history WHERE query NOT IN
+                  (SELECT query FROM search_history ORDER BY at DESC, rowid DESC LIMIT ?)
+                """, arguments: [Self.maxSearches])
         }
     }
 
-    func recentSearches(limit: Int = 20) throws -> [String] {
-        try queue.read { try String.fetchAll($0, sql: "SELECT query FROM search_history ORDER BY at DESC LIMIT ?", arguments: [limit]) }
+    func recentSearches(limit: Int = 50) throws -> [String] {
+        try queue.read { try String.fetchAll($0, sql: "SELECT query FROM search_history ORDER BY at DESC, rowid DESC LIMIT ?", arguments: [limit]) }
     }
+
+    func clearSearches() throws { try queue.write { try $0.execute(sql: "DELETE FROM search_history") } }
 }

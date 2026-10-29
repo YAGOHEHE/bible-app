@@ -22,6 +22,7 @@ struct ReaderView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.palette.background)
         .overlay(alignment: .bottom) { ToastView() }
+        .overlay(alignment: .topTrailing) { SearchTermsChip() }
     }
 }
 
@@ -92,7 +93,7 @@ private struct ChapterScroll: View {
             .focusEffectDisabled()
             .onKeyPress(.leftArrow) { state.goPrev(); return .handled }
             .onKeyPress(.rightArrow) { state.goNext(); return .handled }
-            .onKeyPress(.escape) { state.clearSelection(); return .handled }
+            .onKeyPress(.escape) { state.clearSelection(); state.clearFlash(); return .handled }
             .onAppear { focused = true; scroll(proxy, to: state.scrollRequest.verse) }
             .onChange(of: state.scrollRequest) { _, r in scroll(proxy, to: r.verse) }
             .onChange(of: settings.fontScale) { _, _ in scroll(proxy, to: state.anchorVerse) }
@@ -184,7 +185,9 @@ private struct BlockView: View {
 
     @ViewBuilder private func text(latin: Bool) -> some View {
         let attr = VerseText.attributed(pieces: block.pieces, theme: theme, latin: latin,
-                                        selected: state.selectedVerses, hang: hang)
+                                        selected: state.selectedVerses, hang: hang,
+                                        hl: TextHighlight(terms: state.searchTerms, flash: state.flashVerses,
+                                                          flashAlpha: state.flashAlpha))
         let verses = block.verseNumbers
         Text(attr)
             .lineSpacing(theme.lineSpacing(latin: latin))
@@ -212,6 +215,27 @@ private struct BlockView: View {
     }
 }
 
+/// Resaltado dentro del texto: coincidencias de búsqueda (persistentes) y versículos destacados (se desvanecen).
+struct TextHighlight: Equatable {
+    var terms: [String] = []
+    var flash: Set<Int> = []
+    var flashAlpha: Double = 0
+    static let none = TextHighlight()
+
+    func flashes(_ from: Int, _ to: Int) -> Bool { flashAlpha > 0 && flash.contains { $0 >= from && $0 <= to } }
+
+    func apply(to body: inout AttributedString, plain: String, theme: Theme) {
+        guard !terms.isEmpty else { return }
+        for r in SearchHighlighter.ranges(in: plain, terms: terms) {
+            if let lo = AttributedString.Index(r.lowerBound, within: body),
+               let hi = AttributedString.Index(r.upperBound, within: body) {
+                body[lo..<hi].backgroundColor = theme.palette.searchHighlight
+                body[lo..<hi].foregroundColor = theme.palette.textPrimary
+            }
+        }
+    }
+}
+
 enum VerseText {
     private static func numberRun(_ label: String, verse: Int, theme: Theme, selected: Bool, links: Bool) -> AttributedString {
         var num = AttributedString(label + "\u{2009}")
@@ -225,7 +249,7 @@ enum VerseText {
 
     /// Número en superíndice (enlace verse://N para seleccionar) + texto, con selección resaltada.
     static func attributed(verses: [DisplayVerse], theme: Theme, latin: Bool, selected: Set<Int>,
-                           links: Bool = true) -> AttributedString {
+                           links: Bool = true, hl: TextHighlight = .none) -> AttributedString {
         var out = AttributedString()
         for (i, v) in verses.enumerated() {
             let isSel = selected.contains(v.number)
@@ -233,6 +257,8 @@ enum VerseText {
             body.font = theme.readingFont(latin: latin)
             body.foregroundColor = theme.palette.textPrimary
             if isSel { body.backgroundColor = theme.palette.selection }
+            else if hl.flashes(v.number, v.endNumber) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
+            hl.apply(to: &body, plain: v.text, theme: theme)
             out += numberRun(v.label, verse: v.number, theme: theme, selected: isSel, links: links)
             out += body
             if i < verses.count - 1 { out += AttributedString(latin ? " " : "") }
@@ -242,7 +268,7 @@ enum VerseText {
 
     /// Trozos de un bloque: número solo donde empieza cada versículo (`label`), texto corrido.
     static func attributed(pieces: [Piece], theme: Theme, latin: Bool, selected: Set<Int>,
-                           hang: CGFloat = 0, links: Bool = true) -> AttributedString {
+                           hang: CGFloat = 0, links: Bool = true, hl: TextHighlight = .none) -> AttributedString {
         var out = AttributedString()
         for (i, p) in pieces.enumerated() {
             let isSel = selected.contains(p.verse)
@@ -251,6 +277,8 @@ enum VerseText {
             body.font = theme.readingFont(latin: latin)
             body.foregroundColor = theme.palette.textPrimary
             if isSel { body.backgroundColor = theme.palette.selection }
+            else if hl.flashes(p.verse, p.end) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
+            hl.apply(to: &body, plain: p.text, theme: theme)
             out += body
             if i < pieces.count - 1 { out += AttributedString(latin ? " " : "") }
         }

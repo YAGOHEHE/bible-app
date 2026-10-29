@@ -94,6 +94,7 @@ struct SearchHit: Hashable, Identifiable {
     var chapter: Int
     var verse: Int
     var snippet: String
+    var text: String = ""
     var id: String { "\(translationId)-\(book)-\(chapter)-\(verse)" }
 }
 

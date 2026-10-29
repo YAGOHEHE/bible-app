@@ -36,6 +36,7 @@ struct ParallelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.palette.background)
         .overlay(alignment: .bottom) { ToastView() }
+        .overlay(alignment: .topTrailing) { SearchTermsChip() }
     }
 }
 
@@ -79,7 +80,7 @@ private struct ParallelContent: View {
                 .focusEffectDisabled()
                 .onKeyPress(.leftArrow) { state.goPrev(); return .handled }
                 .onKeyPress(.rightArrow) { state.goNext(); return .handled }
-                .onKeyPress(.escape) { state.clearSelection(); return .handled }
+                .onKeyPress(.escape) { state.clearSelection(); state.clearFlash(); return .handled }
                 .onAppear { focused = true; scroll(proxy, to: state.scrollRequest.verse) }
                 .onChange(of: state.scrollRequest) { _, r in scroll(proxy, to: r.verse) }
                 .onChange(of: settings.fontScale) { _, _ in scroll(proxy, to: state.anchorVerse) }
@@ -159,20 +160,21 @@ private struct ParallelRowView: View {
 
     var body: some View {
         let selected = state.selectedVerses.contains(row.number)
+        let flash = state.flashVerses.contains(row.number) ? state.flashAlpha : 0
         let cols = state.parallelColumns
         Group {
             if stacked {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Array(row.cells.enumerated()), id: \.offset) { i, cell in
                         ParallelCellView(cell: cell, index: i, column: cols[safe: i], row: row.number,
-                                         selected: selected, showTag: true)
+                                         selected: selected, showTag: true, flash: flash)
                     }
                 }
             } else {
                 HStack(alignment: .top, spacing: ParallelMetrics.columnGap) {
                     ForEach(Array(row.cells.enumerated()), id: \.offset) { i, cell in
                         ParallelCellView(cell: cell, index: i, column: cols[safe: i], row: row.number,
-                                         selected: selected, showTag: false, stretch: true)
+                                         selected: selected, showTag: false, stretch: true, flash: flash)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
@@ -197,6 +199,8 @@ private struct ParallelCellView: View {
     let selected: Bool
     let showTag: Bool
     var stretch = false
+    var flash: Double = 0
+    @Environment(AppState.self) private var state
 
     private var latin: Bool { (column?.language ?? "es") != "zh" }
     private var name: String { column?.name ?? column?.id ?? "" }
@@ -217,7 +221,8 @@ private struct ParallelCellView: View {
                             .accessibilityAddTraits(.isHeader)
                     }
                 }
-                Text(VerseText.attributed(verses: [v], theme: theme, latin: latin, selected: [], links: false))
+                Text(VerseText.attributed(verses: [v], theme: theme, latin: latin, selected: [], links: false,
+                                           hl: TextHighlight(terms: state.searchTerms)))
                     .lineSpacing(theme.lineSpacing(latin: latin))
                     .tracking(latin ? 0 : theme.pt * 0.02)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -235,7 +240,12 @@ private struct ParallelCellView: View {
         }
         .padding(.leading, 11).padding(.trailing, 8).padding(.vertical, 6)
         .frame(maxWidth: .infinity, maxHeight: stretch ? .infinity : nil, alignment: .topLeading)
-        .background(selected ? theme.palette.selection : parallelTint(index, theme), in: RoundedRectangle(cornerRadius: 6))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6).fill(selected ? theme.palette.selection : parallelTint(index, theme))
+                RoundedRectangle(cornerRadius: 6).fill(theme.palette.selection.opacity(flash))
+            }
+        }
         .overlay(alignment: .leading) {
             Rectangle().fill(parallelAccent(index, theme)).frame(width: 3)
                 .clipShape(RoundedRectangle(cornerRadius: 1.5))

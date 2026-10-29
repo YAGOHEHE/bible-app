@@ -80,66 +80,101 @@ struct VerseRepository {
     }
 }
 
+struct SearchPage {
+    var hits: [SearchHit]
+    var total: Int
+    var perBook: [Int: Int]
+}
+
+/// Búsqueda de texto. >= 3 caracteres por término: FTS5 trigram (distingue acentos, no mayúsculas).
+/// 1-2 caracteres (p. ej. 爱): LIKE sobre `verses`. Limitación conocida: "amor" no encuentra "ámor"
+/// (no se pliegan acentos; ver nota en la ayuda de la búsqueda).
 struct SearchRepository {
     let db: BibleDatabase
 
-    enum Scope { case all, ot, nt, book(Int) }
+    enum Scope: Equatable { case all, ot, nt, book(Int) }
 
-    /// "a/b" = OR. >= 3 caracteres: FTS5 trigram (frase entre comillas). 1–2: LIKE.
+    private struct Plan {
+        var terms: [String]
+        var from: String
+        var whereSQL: String
+        var args: [DatabaseValueConvertible]
+        var order: String
+    }
+
+    private func plan(_ query: String, translationId: String, scope: Scope) -> Plan? {
+        let terms = SearchTerms.split(query)
+        guard !terms.isEmpty else { return nil }
+        var scopeSQL = ""
+        var scopeArgs: [DatabaseValueConvertible] = []
+        switch scope {
+        case .all: break
+        case .ot: scopeSQL = " AND CAST(book AS INT) <= 39"
+        case .nt: scopeSQL = " AND CAST(book AS INT) >= 40"
+        case .book(let b): scopeSQL = " AND CAST(book AS INT) = ?"; scopeArgs = [b]
+        }
+        if terms.allSatisfy({ $0.count >= 3 }) {
+            let match = terms.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }.joined(separator: " OR ")
+            return Plan(terms: terms, from: "verses_fts",
+                        whereSQL: "verses_fts MATCH ? AND translation_id = ?" + scopeSQL,
+                        args: [match, translationId] + scopeArgs,
+                        order: "CAST(book AS INT), CAST(chapter AS INT), CAST(verse AS INT)")
+        }
+        let like = terms.map { _ in "text LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
+        let pats: [DatabaseValueConvertible] = terms.map {
+            "%" + $0.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_") + "%"
+        }
+        return Plan(terms: terms, from: "verses",
+                    whereSQL: "translation_id = ? AND (\(like))" + scopeSQL,
+                    args: [translationId] + pats + scopeArgs,
+                    order: "book, chapter, verse")
+    }
+
+    /// "a/b" = OR.
     func search(_ query: String, translationId: String, scope: Scope = .all, limit: Int = 200) throws -> [SearchHit] {
-        let terms = query.split(separator: "/").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        guard !terms.isEmpty else { return [] }
-        let (scopeSQL, scopeArgs): (String, [DatabaseValueConvertible]) = {
-            switch scope {
-            case .all: return ("", [])
-            case .ot: return (" AND book <= 39", [])
-            case .nt: return (" AND book >= 40", [])
-            case .book(let b): return (" AND book = ?", [b])
-            }
-        }()
+        try page(query, translationId: translationId, scope: scope, limit: limit, withCounts: false).hits
+    }
+
+    /// Resultados (primeros `limit` en orden canónico) + recuento total y por libro.
+    func page(_ query: String, translationId: String, scope: Scope = .all, limit: Int = 500,
+              withCounts: Bool = true) throws -> SearchPage {
+        guard let p = plan(query, translationId: translationId, scope: scope) else {
+            return SearchPage(hits: [], total: 0, perBook: [:])
+        }
         return try db.reader.read { d in
-            var hits: [SearchHit] = []
-            let fts = terms.allSatisfy { $0.count >= 3 }
-            let rows: [Row]
-            if fts {
-                let match = terms.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }.joined(separator: " OR ")
-                rows = try Row.fetchAll(d, sql: """
-                    SELECT book, chapter, verse, text FROM verses_fts
-                    WHERE verses_fts MATCH ? AND translation_id = ?\(scopeSQL)
-                    ORDER BY CAST(book AS INT), CAST(chapter AS INT), CAST(verse AS INT) LIMIT ?
-                    """, arguments: StatementArguments([match, translationId] + scopeArgs + [limit]))
-            } else {
-                let like = terms.map { _ in "text LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
-                let pats: [DatabaseValueConvertible] = terms.map {
-                    "%" + $0.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%")
-                        .replacingOccurrences(of: "_", with: "\\_") + "%"
-                }
-                rows = try Row.fetchAll(d, sql: """
-                    SELECT book, chapter, verse, text FROM verses
-                    WHERE translation_id = ? AND (\(like))\(scopeSQL)
-                    ORDER BY book, chapter, verse LIMIT ?
-                    """, arguments: StatementArguments([translationId] + pats + scopeArgs + [limit]))
-            }
-            for r in rows {
+            let rows = try Row.fetchAll(d, sql: """
+                SELECT book, chapter, verse, text FROM \(p.from) WHERE \(p.whereSQL)
+                ORDER BY \(p.order) LIMIT ?
+                """, arguments: StatementArguments(p.args + [limit]))
+            let hits = rows.map { r -> SearchHit in
                 let text: String = r["text"]
-                hits.append(SearchHit(translationId: translationId, book: Self.int(r["book"]),
-                                      chapter: Self.int(r["chapter"]), verse: Self.int(r["verse"]),
-                                      snippet: Self.snippet(text, terms: terms)))
+                return SearchHit(translationId: translationId, book: Self.int(r["book"]),
+                                 chapter: Self.int(r["chapter"]), verse: Self.int(r["verse"]),
+                                 snippet: Self.snippet(text, terms: p.terms), text: text)
             }
-            return hits
+            var perBook: [Int: Int] = [:]
+            if withCounts {
+                for r in try Row.fetchAll(d, sql: """
+                    SELECT book, COUNT(*) AS n FROM \(p.from) WHERE \(p.whereSQL) GROUP BY book
+                    """, arguments: StatementArguments(p.args)) {
+                    perBook[Self.int(r["book"])] = r["n"]
+                }
+            } else {
+                for h in hits { perBook[h.book, default: 0] += 1 }
+            }
+            return SearchPage(hits: hits, total: perBook.values.reduce(0, +), perBook: perBook)
         }
     }
 
     private static func int(_ v: DatabaseValue) -> Int { Int.fromDatabaseValue(v) ?? Int(String.fromDatabaseValue(v) ?? "") ?? 0 }
 
-    /// Fragmento con la coincidencia entre «».
+    /// Versículo con la primera coincidencia entre «».
     static func snippet(_ text: String, terms: [String]) -> String {
-        for t in terms {
-            if let r = text.range(of: t, options: [.caseInsensitive, .diacriticInsensitive]) {
-                var s = text
-                s.replaceSubrange(r, with: "«" + text[r] + "»")
-                return s
-            }
+        if let r = SearchHighlighter.ranges(in: text, terms: terms).first {
+            var s = text
+            s.replaceSubrange(r, with: "«" + text[r] + "»")
+            return s
         }
         return text
     }

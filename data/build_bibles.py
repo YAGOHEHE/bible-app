@@ -141,6 +141,14 @@ def norm(s):
 CJK_RE = re.compile(r"[^\x00-\x7f]")
 
 
+SPACE_PUNCT_RE = re.compile(r"([,;:])(?=[A-Za-z])")
+
+
+def norm_fixpunct(s):
+    """KJV/ASV sources lack the space after , ; : in places ("unto him,Verily")."""
+    return SPACE_PUNCT_RE.sub(r"\1 ", norm(s))
+
+
 def norm_zh(s):
     s = norm(s.replace("\u3000", " "))
     # drop spaces adjacent to any non-ASCII char (honorific space before 神, etc.)
@@ -164,14 +172,14 @@ def flatten(items):
     return "".join(out)
 
 
-def parse_chapter_layout(content, lang):
+def parse_chapter_layout(content, lang, fix_punct=False):
     """HelloAO chapter content -> (verses, headings, pieces).
 
     verses:  [(number, text)]            plain text, one line (unchanged vs schema 1)
     headings:[(verse, text, kind)]       kind 's1' (heading) | 'd' (hebrew_subtitle)
     pieces:  [(kind, level, verse, text)] kind = block kind opening a block, or '+' (continuation)
     """
-    nz = norm_zh if lang == "zh" else norm
+    nz = norm_zh if lang == "zh" else (norm_fixpunct if fix_punct else norm)
     verses, headings, pieces = [], [], []
     pending = []
     # estado de maquetación
@@ -263,7 +271,7 @@ def load_helloao(tid, lang):
         assert 1 <= bn <= 66, (hid, b["id"], bn)
         for ch in b["chapters"]:
             cn = ch["chapter"]["number"]
-            vs, hs, ps = parse_chapter_layout(ch["chapter"]["content"], lang)
+            vs, hs, ps = parse_chapter_layout(ch["chapter"]["content"], lang, fix_punct=tid in ("KJV", "ASV"))
             verses += [(tid, bn, cn, n, t) for n, t in vs]
             headings += [(tid, bn, cn, n, t, k) for n, t, k in hs]
             layout += [(tid, bn, cn, i + 1, k, lvl, v, t) for i, (k, lvl, v, t) in enumerate(ps)]
