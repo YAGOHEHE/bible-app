@@ -1,3 +1,4 @@
+import BibliaCore
 import Foundation
 import Observation
 import AppKit
@@ -609,6 +610,4 @@ enum InspectorTab: String, CaseIterable, Identifiable {
     var label: String { self == .strong ? "Strong" : self == .note ? "Nota" : "Referencias" }
 }
 
-extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}
+

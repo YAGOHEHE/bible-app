@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import SwiftUI
 @testable import BibliaApp
+@testable import BibliaCore
 
 private let hasDB = BibleDatabase.bundledPath() != nil
 private func openDB() throws -> BibleDatabase { try BibleDatabase(path: try #require(BibleDatabase.bundledPath())) }

@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// S02: libros AT/NT (idioma de la versión), recientes, filtro y cuadrícula de capítulos.

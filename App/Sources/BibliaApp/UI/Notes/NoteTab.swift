@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Pestaña «Nota» del inspector: referencia + texto, notas del rango y editor Markdown con vista previa.

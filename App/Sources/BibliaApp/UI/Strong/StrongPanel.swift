@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// S06: inspector Strong (léxico + otras apariciones).

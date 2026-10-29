@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Ventana "Acerca de Biblia": versión, fuentes y licencias (atribución requerida).

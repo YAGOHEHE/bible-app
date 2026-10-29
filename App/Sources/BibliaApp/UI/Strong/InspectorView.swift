@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Inspector con pestañas: Strong · Nota · Referencias.

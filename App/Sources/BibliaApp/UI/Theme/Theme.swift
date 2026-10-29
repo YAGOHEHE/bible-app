@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 enum ThemeChoice: String, CaseIterable, Codable, Identifiable {

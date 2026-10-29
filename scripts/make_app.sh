@@ -14,7 +14,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/BibliaApp" "$APP/Contents/MacOS/Biblia"
 cp "$ROOT/App/Icon/Biblia.icns" "$APP/Contents/Resources/Biblia.icns"
 # Paquete de recursos de SwiftPM (contiene Resources/bible.sqlite). BibleDatabase lo busca en Contents/Resources.
-cp -R "$BIN_DIR/BibliaApp_BibliaApp.bundle" "$APP/Contents/Resources/"
+cp -R "$BIN_DIR/BibliaApp_BibliaCore.bundle" "$APP/Contents/Resources/"
 # GRDB aporta su propio bundle (PrivacyInfo); se copia si existe.
 [ -d "$BIN_DIR/GRDB_GRDB.bundle" ] && cp -R "$BIN_DIR/GRDB_GRDB.bundle" "$APP/Contents/Resources/"
 

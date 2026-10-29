@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Panel «Notas» de la barra lateral: notas, resaltados y marcadores con filtros y búsqueda.

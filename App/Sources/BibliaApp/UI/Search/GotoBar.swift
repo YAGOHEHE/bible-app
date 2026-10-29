@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Barra "Ir a referencia" (⌘L): flotante sobre el lector. Acepta zh/es/en, rangos y solo capítulo.

@@ -1,6 +1,7 @@
 import Testing
-import Foundation
 @testable import BibliaApp
+import Foundation
+@testable import BibliaCore
 
 private func tr(_ id: String, _ lang: String) -> Translation {
     Translation(id: id, name: id, language: lang, license: nil, sourceURL: nil, hasStrongs: false)

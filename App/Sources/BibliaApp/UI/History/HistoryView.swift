@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// S07: historial de lectura (hoja, ⌘Y).

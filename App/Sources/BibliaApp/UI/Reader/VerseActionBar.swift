@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Barra de acciones anclada abajo del panel de lectura (dentro de la columna de detalle, así nunca

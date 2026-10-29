@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 struct RootView: View {

@@ -1,3 +1,4 @@
+import BibliaCore
 import Foundation
 import AppKit
 

@@ -1,6 +1,7 @@
 import Testing
-import Foundation
 @testable import BibliaApp
+import Foundation
+@testable import BibliaCore
 
 private let hasDB = BibleDatabase.bundledPath() != nil
 

@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// S04: gestor de versiones (hoja ⌥⌘V). Lista con orden por arrastre, activar para la vista paralela y principal.

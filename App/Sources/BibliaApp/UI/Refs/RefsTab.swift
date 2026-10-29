@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Pestaña «Referencias» del inspector: referencias cruzadas del rango, de más a menos votadas.

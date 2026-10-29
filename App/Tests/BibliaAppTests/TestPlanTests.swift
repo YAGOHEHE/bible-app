@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import BibliaApp
+@testable import BibliaCore
 
 /// Casos de replica/test-plan.md que no cubrían las suites de cada slice.
 @Suite struct TestPlanTests {

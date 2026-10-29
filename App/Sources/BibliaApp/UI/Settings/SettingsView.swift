@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// S08: ajustes. Todo se aplica en vivo.

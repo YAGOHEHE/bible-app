@@ -1,3 +1,4 @@
+import BibliaCore
 import SwiftUI
 
 /// Selector de la barra lateral: Libros (S02) | Buscar (S05) | Notas.

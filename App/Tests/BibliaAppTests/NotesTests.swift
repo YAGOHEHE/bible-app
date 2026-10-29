@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import BibliaApp
+@testable import BibliaCore
 
 private func makeStore() throws -> AnnotationStore {
     let u = try UserStore(path: NSTemporaryDirectory() + "notes-\(UUID().uuidString).sqlite")
