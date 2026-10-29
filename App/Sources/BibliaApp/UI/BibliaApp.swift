@@ -60,6 +60,7 @@ extension BibliaApp {
             state.showStrong(id)
         }
         if d.bool(forKey: "showHistory") { state.showHistory = true }
+        applyAnnotationArguments(d)
         // Ganchos solo para pruebas manuales (replica/test-plan.md).
         if d.object(forKey: "startParallel") != nil { state.setParallel(d.bool(forKey: "startParallel")) }
         if d.string(forKey: "startParallelLayout") == "interleaved" { state.setParallelLayout(.interleaved) }
@@ -74,15 +75,90 @@ extension BibliaApp {
     }
 }
 
+extension BibliaApp {
+    /// `-annotate "3:yellow,5:green,16:blue,18:bookmark,20:note"` crea anotaciones reales en el almacén de usuario;
+    /// `-selectVerse 16` (o `16-18`) selecciona y muestra la barra de acciones. Solo para capturas y pruebas manuales.
+    @MainActor private func applyAnnotationArguments(_ d: UserDefaults) {
+        if let spec = d.string(forKey: "annotate") {
+            for item in spec.split(separator: ",") {
+                let kv = item.split(separator: ":").map(String.init)
+                guard kv.count == 2, let v = Int(kv[0]) else { continue }
+                if kv[1] == "note" {
+                    _ = try? state.annotations?.addNote(book: state.book, chapter: state.chapter, verseStart: v, body: "Nota de ejemplo")
+                    state.reloadAnnotations()
+                } else if kv[1] == "bookmark" { state.toggleBookmarkSelection(scope: [v]) }
+                else if let c = HighlightColor(rawValue: kv[1]) { state.highlightSelection(c, scope: [v]) }
+            }
+        }
+        if let sel = d.string(forKey: "selectVerse") {
+            let r = sel.split(separator: "-").compactMap { Int($0) }
+            guard let a = r.first else { return }
+            let b = r.count > 1 ? r[1] : a
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                state.clickVerse(a, shift: false, command: false)
+                if b > a { state.selectedVerses = Set(a...b) }
+                state.actionBarVerse = a
+                state.actionBarVisible = true
+            }
+        }
+    }
+}
+
 struct ReaderCommands: Commands {
     let state: AppState
     let settings: AppSettings
     let search: SearchModel
     @Environment(\.openWindow) private var openWindow
 
+    /// ⌘C: texto seleccionado en un campo; si no, los versículos seleccionados; si no, copia estándar.
+    @MainActor static func copy(_ state: AppState) {
+        if let tv = NSApp.keyWindow?.firstResponder as? NSTextView, tv.selectedRange().length > 0 {
+            tv.copy(nil)
+        } else if state.isEnabled(.copy) {
+            state.perform(.copy)
+        } else {
+            NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+        }
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("Acerca de Biblia") { openWindow(id: "about") }
+        }
+        CommandGroup(replacing: .pasteboard) {
+            Button("Cortar") { NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil) }
+                .keyboardShortcut("x", modifiers: .command)
+            Button("Copiar") { ReaderCommands.copy(state) }
+                .keyboardShortcut("c", modifiers: .command)
+            Button("Pegar") { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) }
+                .keyboardShortcut("v", modifiers: .command)
+            Button("Seleccionar todo") { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+                .keyboardShortcut("a", modifiers: .command)
+        }
+        CommandMenu("Versículo") {
+            Button("Copiar con referencia") { state.perform(.copyReference) }
+                .keyboardShortcut("c", modifiers: [.command, .option]).disabled(!state.isEnabled(.copyReference))
+            Divider()
+            Button("Resaltar con el último color") { state.perform(.highlight) }
+                .keyboardShortcut("h", modifiers: [.command, .option]).disabled(!state.isEnabled(.highlight))
+            Menu("Resaltar con") {
+                ForEach(HighlightColor.allCases) { c in
+                    Button(c.displayName) { state.highlightSelection(c) }
+                }
+                Divider()
+                Button("Quitar resaltado") { state.removeHighlightSelection() }
+                    .disabled(!state.selectionHasHighlight())
+            }
+            .disabled(!state.isEnabled(.highlight))
+            Button("Anotar") { state.perform(.note) }
+                .keyboardShortcut("n", modifiers: [.command, .option]).disabled(!state.isEnabled(.note))
+            Button(state.selectionBookmarked() ? "Quitar marcador" : "Marcador") { state.perform(.bookmark) }
+                .keyboardShortcut("d", modifiers: .command).disabled(!state.isEnabled(.bookmark))
+            Divider()
+            Button("Referencias cruzadas") { state.perform(.crossRefs) }.disabled(!state.isEnabled(.crossRefs))
+            Button("Comparar versiones") { state.perform(.compare) }.disabled(!state.isEnabled(.compare))
+            Button("Abrir en Strong") { state.perform(.strong) }.disabled(!state.isEnabled(.strong))
         }
         CommandMenu("Buscar") {
             Button("Buscar…") { search.activate() }
@@ -123,9 +199,6 @@ struct ReaderCommands: Commands {
                 .keyboardShortcut("i", modifiers: .command)
             Button("Historial…") { state.showHistory = true }
                 .keyboardShortcut("y", modifiers: .command)
-            Divider()
-            Button("Copiar con referencia") { state.copyWithReference() }
-                .keyboardShortcut("c", modifiers: [.command, .option]).disabled(!state.canCopyReference)
         }
     }
 }

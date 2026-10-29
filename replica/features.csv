@@ -9,7 +9,7 @@ Nombres de libros en el idioma de cada versión,lectura,should,yes,yes,tabla Boo
 Títulos de sección (小标题) antes del versículo,lectura,must,yes,yes,tabla Titles opcional
 Enlaces de referencia dentro de los títulos de sección (popover con el pasaje),lectura,could,yes,no,solo modo normal en el original
 "Modo ""cada versículo en su línea"" (每节另起一行)",lectura,should,yes,yes,alterna párrafo corrido / lista
-Seleccionar versículo(s) y copiar con formato,lectura,must,yes,yes,
+Seleccionar versículo(s) y copiar con formato,lectura,must,yes,yes,"v1.1: barra de acciones flotante, menú contextual, ⌘C / ⌥⌘C"
 Formato de copia/compartir personalizable,lectura,could,yes,no,plantilla con {libro} {ref} {texto}
 Vista paralela de versiones (对照模式) en la misma pantalla (S03),versiones,must,yes,yes,reseña principal de usuarios
 Vista dividida con panel lateral (SecondSplit),versiones,should,yes,no,segundo panel conmutable
@@ -39,7 +39,7 @@ Historial de búsquedas,búsqueda,should,yes,yes,SearchHistory
 Abrir resultado de búsqueda en el lector y resaltar coincidencia,búsqueda,must,yes,yes,
 Estado sin resultados en la búsqueda,búsqueda,must,yes,yes,
 Historial de lectura automático (翻页/跳转) (S07),historial,should,yes,yes,tabla Auto
-Historial manual / marcadores,historial,could,yes,no,tabla Manual
+Historial manual / marcadores,historial,could,yes,partial,"v1.1: marcadores por versículo (⌘D, glifo en el texto); lista en el panel Notas (tarea 5)"
 Tamaño de fuente (porcentaje),ajustes,must,yes,yes,FontSizePercent
 Tema claro/oscuro (sigue al sistema) (S08),ajustes,must,yes,yes,
 Esquemas de color (uno por modo claro/oscuro),ajustes,could,yes,partial,sepia además de claro/oscuro; sin esquemas elegibles por modo
@@ -54,7 +54,7 @@ Importar localmente módulos que el usuario ya posee (SQLite Bible/Titles/Books/
 Importar versiones con Strong en formato MySword,versiones,could,yes,no,solo importación local del usuario
 Notas del usuario con Markdown y enlaces a versículos,notas,could,yes,no,fuera de la primera versión (lectura y estudio primero)
 Búsqueda de notas,notas,could,yes,no,
-Resaltados / frases doradas (金句) con grupos de color,resaltados,could,yes,no,fuera de v1; tabla Goldenwords
+Resaltados / frases doradas (金句) con grupos de color,resaltados,could,yes,yes,"v1.1: 5 colores, ⌥⌘H, visibles en todas las versiones y columnas paralelas"
 Planes de lectura con desfase de días,planes,could,yes,no,fuera de v1
 Progreso de plan por día,planes,could,yes,no,
 Comentarios (注释) como panel,comentarios,could,yes,no,fuera de v1; contenido propietario no incluible

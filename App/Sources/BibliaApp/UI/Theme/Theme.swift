@@ -26,6 +26,24 @@ struct ThemePalette {
     let accent, onAccent, verseNumber, heading, strongUnderline: Color
     let searchHighlight, selection, border, borderInput, focusRing, danger: Color
     let parallel: [Color]
+    /// Fondos de resaltado (bajo el texto) y su mezcla con `selection` cuando el versículo está seleccionado.
+    let highlight: [HighlightColor: Color]
+    let highlightSelected: [HighlightColor: Color]
+    let bookmarkMarker: Color
+
+    /// `y,g,b,p,o` = amarillo, verde, azul, rosa, naranja (orden de `HighlightColor.allCases`).
+    private static func highlights(_ hex: [UInt32], selection: UInt32)
+        -> ([HighlightColor: Color], [HighlightColor: Color]) {
+        var a: [HighlightColor: Color] = [:], b: [HighlightColor: Color] = [:]
+        for (c, h) in zip(HighlightColor.allCases, hex) {
+            a[c] = .hex(h); b[c] = .hex(mix(h, selection))
+        }
+        return (a, b)
+    }
+    static func mix(_ a: UInt32, _ b: UInt32) -> UInt32 {
+        func ch(_ s: Int) -> UInt32 { ((((a >> s) & 0xFF) + ((b >> s) & 0xFF)) / 2) << s }
+        return ch(16) | ch(8) | ch(0)
+    }
 
     static let light = ThemePalette(
         background: .hex(0xFFFFFF), surface: .hex(0xF5F5F7),
@@ -35,7 +53,10 @@ struct ThemePalette {
         searchHighlight: .hex(0xFFE17A), selection: .hex(0xC9DAFF),
         border: .hex(0xD8D8DE), borderInput: .hex(0x85858F), focusRing: .hex(0x3447A0),
         danger: .hex(0xB3261E),
-        parallel: [.hex(0xE8F0FC), .hex(0xE9F5EB), .hex(0xFBEFE2)])
+        parallel: [.hex(0xE8F0FC), .hex(0xE9F5EB), .hex(0xFBEFE2)],
+        highlight: highlights([0xFFF3B0, 0xCDEFC8, 0xB8E6F2, 0xFFD3E2, 0xFFDDB8], selection: 0xC9DAFF).0,
+        highlightSelected: highlights([0xFFF3B0, 0xCDEFC8, 0xB8E6F2, 0xFFD3E2, 0xFFDDB8], selection: 0xC9DAFF).1,
+        bookmarkMarker: .hex(0xB5441F))
 
     static let dark = ThemePalette(
         background: .hex(0x1C1C1E), surface: .hex(0x2A2A2D),
@@ -45,7 +66,10 @@ struct ThemePalette {
         searchHighlight: .hex(0x6E5A0B), selection: .hex(0x2F4A80),
         border: .hex(0x3D3D42), borderInput: .hex(0x7C7C86), focusRing: .hex(0x9DB0FF),
         danger: .hex(0xFF8F86),
-        parallel: [.hex(0x243350), .hex(0x233A2B), .hex(0x403124)])
+        parallel: [.hex(0x243350), .hex(0x233A2B), .hex(0x403124)],
+        highlight: highlights([0x5A4E12, 0x1F5A33, 0x1C5468, 0x6B2A47, 0x6B3F14], selection: 0x2F4A80).0,
+        highlightSelected: highlights([0x5A4E12, 0x1F5A33, 0x1C5468, 0x6B2A47, 0x6B3F14], selection: 0x2F4A80).1,
+        bookmarkMarker: .hex(0xFF9E6B))
 
     static let sepia = ThemePalette(
         background: .hex(0xF4ECD8), surface: .hex(0xEADFC4),
@@ -55,7 +79,10 @@ struct ThemePalette {
         searchHighlight: .hex(0xEFCB62), selection: .hex(0xDCC48E),
         border: .hex(0xD2C4A2), borderInput: .hex(0x85704F), focusRing: .hex(0x8A3B1E),
         danger: .hex(0xA3271B),
-        parallel: [.hex(0xE4E8CF), .hex(0xEBDACB), .hex(0xDCE2DA)])
+        parallel: [.hex(0xE4E8CF), .hex(0xEBDACB), .hex(0xDCE2DA)],
+        highlight: highlights([0xF5E39A, 0xCFE0A8, 0xB5D5D3, 0xEBC3C0, 0xEBC08A], selection: 0xDCC48E).0,
+        highlightSelected: highlights([0xF5E39A, 0xCFE0A8, 0xB5D5D3, 0xEBC3C0, 0xEBC08A], selection: 0xDCC48E).1,
+        bookmarkMarker: .hex(0xA3401C))
 }
 
 struct Theme {

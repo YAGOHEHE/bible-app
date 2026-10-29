@@ -202,6 +202,12 @@ private struct ParallelRowView: View {
             let m = NSEvent.modifierFlags
             state.clickVerse(row.number, shift: m.contains(.shift), command: m.contains(.command))
         }
+        .contextMenu { VerseMenuItems(scope: state.scope(forContextVerse: row.number)) }
+        .popover(isPresented: Binding(
+            get: { state.actionBarVisible && state.actionBarVerse == row.number && selected },
+            set: { if !$0 { state.actionBarVisible = false } }), arrowEdge: .bottom) {
+            VerseActionBar(scope: nil)
+        }
     }
 }
 
@@ -242,12 +248,13 @@ private struct ParallelCellView: View {
                             .accessibilityAddTraits(.isHeader)
                     }
                 }
-                Text(VerseText.attributed(verses: [v], theme: theme, latin: latin, selected: [], links: false,
+                Text(VerseText.attributed(verses: [v], theme: theme, latin: latin, selected: selected ? [v.number] : [], links: false,
                                            hl: parallelHighlight))
                     .lineSpacing(theme.lineSpacing(latin: latin))
                     .tracking(latin ? 0 : theme.pt * 0.02)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .environment(\.openURL, OpenURLAction { url in
+                        if let id = NoteLink.parse(url) { state.openNoteIcon(id: id); return .handled }
                         guard url.scheme == StrongLink.scheme else { return .systemAction }
                         state.openStrong(link: url); return .handled
                     })

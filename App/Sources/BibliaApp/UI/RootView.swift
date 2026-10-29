@@ -26,7 +26,7 @@ struct RootView: View {
             } detail: {
                 Group { if state.parallelOn { ParallelView() } else { ReaderView() } }
                     .inspector(isPresented: Binding(get: { state.showInspector }, set: { state.showInspector = $0 })) {
-                        StrongPanel().inspectorColumnWidth(min: 260, ideal: 320, max: 440)
+                        InspectorView().inspectorColumnWidth(min: 260, ideal: 320, max: 440)
                     }
             }
             .navigationTitle("\(state.bookName(state.book)) \(state.chapter)")

@@ -21,7 +21,17 @@ final class AppState {
     var chapter = 1
     var items: [DisplayVerse] = []
     var layout: [LayoutPiece] = []
-    var selectedVerses: Set<Int> = []
+    var selectedVerses: Set<Int> = [] { didSet { if selectedVerses.isEmpty { actionBarVisible = false } } }
+    // Anotaciones (v1.1): por referencia, válidas en cualquier versión.
+    var chapterAnnotations = ChapterAnnotations()
+    var crossRefCounts: [Int: Int] = [:]
+    var actionBarVisible = false
+    /// Versículo junto al que se ancla la barra de acciones.
+    var actionBarVerse = 1
+    var inspectorTab: InspectorTab = .strong
+    /// Rangos pedidos con «Anotar» / «Referencias» (los usan el editor y la lista de la tarea 5).
+    var noteTarget: ClosedRange<Int>?
+    var refsTarget: ClosedRange<Int>?
     var anchorVerse = 1
     var scrollRequest = ScrollRequest(token: 0, verse: 1)
     var recentBooks: [Int] = []
@@ -156,11 +166,13 @@ final class AppState {
             layout = try repo.layout(translationId: translationId, book: book, chapter: chapter)
             try loadParallel(repo)
             try loadStrongSpans(repo)
+            reloadAnnotations()
         } catch {
             load = .failed("\(error)")
             return
         }
         selectedVerses = []
+        actionBarVisible = false
         lastClickedVerse = nil
         let target = verse ?? 1
         if parallelOn {
@@ -236,6 +248,7 @@ final class AppState {
     /// Resaltado para una versión: solo la que lleva Strong recibe tramos.
     func highlight(for translationId: String) -> TextHighlight {
         var h = TextHighlight(terms: searchTerms, flash: flashVerses, flashAlpha: flashAlpha)
+        h.ann = chapterAnnotations
         if strongMode, translationId == strongTranslationId {
             h.strongSpans = strongSpans
             h.strongActive = strongSelection
@@ -253,6 +266,7 @@ final class AppState {
     /// Abre el inspector con un número (p. ej. «G25»); `nil` = palabra sin número.
     func showStrong(_ id: String?) {
         showInspector = true
+        inspectorTab = .strong
         strongId = id
         strongEntry = nil; strongOccurrences = []; strongOccurrenceTotal = 0
         guard let id, let db = bible else { strongLoading = false; return }
@@ -484,6 +498,7 @@ final class AppState {
             selectedVerses = [n]
         }
         lastClickedVerse = n
+        if !selectedVerses.isEmpty { actionBarVerse = n; actionBarVisible = true }
     }
 
     func clearSelection() { selectedVerses = [] }
@@ -508,6 +523,12 @@ final class AppState {
         NSPasteboard.general.setString(s, forType: .string)
         toast = "Copiado con referencia"
     }
+}
+
+enum InspectorTab: String, CaseIterable, Identifiable {
+    case strong, note, refs
+    var id: String { rawValue }
+    var label: String { self == .strong ? "Strong" : self == .note ? "Nota" : "Referencias" }
 }
 
 extension Array {
