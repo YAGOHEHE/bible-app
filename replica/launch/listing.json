@@ -1,0 +1,11 @@
+{
+  "avoid": ["精读圣经", "精讀聖經", "jdbible", "征 陈", "christapps"],
+  "app_store": {
+    "name": "Biblia",
+    "subtitle": "Lee, compara y anota",
+    "promotional_text": "Ocho versiones de dominio público en chino, español e inglés, con vista paralela, números Strong y referencias cruzadas.",
+    "description": "Biblia es un lector de la Biblia para Mac pensado para el estudio en grupo.\n\n- 8 versiones de dominio público: 和合本 (simplificado y tradicional), Reina-Valera 1909, Biblia libre para el mundo, KJV, ASV, BSB y WEB\n- Vista paralela en columnas o versión principal con glosas\n- Números Strong con léxico griego y hebreo (KJV)\n- 343.000 referencias cruzadas (OpenBible.info, CC BY)\n- Resaltados en 5 colores, marcadores y notas en Markdown\n- Búsqueda en chino, español e inglés\n- Temas claro, oscuro y sepia\n\nSin cuentas, sin anuncios y sin conexión a internet: todo funciona sin red y tus notas se quedan en tu Mac.",
+    "keywords": "biblia,bible,圣经,和合本,reina valera,kjv,strong,estudio biblico,versiculos,paralela",
+    "whats_new": "Selección de varios versículos con un clic, barra de acciones, glosas y referencias cruzadas."
+  }
+}
