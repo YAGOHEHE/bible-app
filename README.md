@@ -34,7 +34,7 @@ scripts/make_classic_app.sh       # -> build/Biblia Clásica.app (universal x86_
 scripts/make_classic_dmg.sh       # -> build/Biblia-Clasica-<versión>.dmg (reconstruye la app y verifica la firma)
 ```
 La app clásica necesita las librerías Swift 5.0 de las Command Line Tools (`/Library/Developer/CommandLineTools/usr/lib/swift-5.0/macosx`, variable `SWIFT5_LIBS`).
-La versión sale del fichero `VERSION` (1.1.2). El icono (cruz latina) se regenera con `scripts/make_icon.sh`, que produce `App/Icon/Biblia.icns`; `scripts/make_app.sh` lo copia al paquete. La app pesa unos 240 MB porque incluye las ocho versiones, el léxico Strong y las referencias cruzadas.
+La versión sale del fichero `VERSION` (1.1.2). El icono («Códice»: libro abierto con la cruz en el pliegue) se regenera con `scripts/make_icon.sh`, que produce `App/Icon/Biblia.icns`; `scripts/make_app.sh` lo copia al paquete. La app pesa unos 240 MB porque incluye las ocho versiones, el léxico Strong y las referencias cruzadas.
 
 ## Instalación
 Biblia (macOS 14+): [`replica/INSTALAR.md`](replica/INSTALAR.md). Biblia Clásica (macOS 10.13+): [`replica/INSTALAR-CLASICA.md`](replica/INSTALAR-CLASICA.md); prueba en Mac antiguo: [`replica/PRUEBA-MAC-ANTIGUO.md`](replica/PRUEBA-MAC-ANTIGUO.md). La app no está notarizada: la primera vez hay que abrirla con clic derecho -> Abrir.

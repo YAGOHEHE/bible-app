@@ -1,5 +1,5 @@
 #!/bin/bash
-# Genera App/Icon/Biblia-1024.png y Biblia.icns (idempotente).
+# Genera App/Icon/Biblia-1024.png (concepto «Códice») y Biblia.icns (idempotente).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ICON="$ROOT/App/Icon"

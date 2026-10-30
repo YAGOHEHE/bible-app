@@ -1,23 +1,24 @@
 # Brief de icono de app (marca provisional "BibliaApp")
 
-## Concepto final: cruz latina (decisión del usuario, v1.1)
-Una cruz latina sencilla, crema (`#F4ECD8`, con degradado muy sutil `#FFF9EA` -> `#EADFC0`), centrada sobre el fondo "squircle" índigo actual (degradado `#4A5DB8` arriba -> `#2C3470` abajo, coherente con `tokens.json`). Sin brillos, rayos ni libro. Sombra suave bajo la cruz (desplazamiento 8 px, desenfoque 16 px, 45 %) y la sombra de sistema del squircle.
+## Concepto final: «Códice» (decisión del usuario, v1.2)
+Libro abierto crema sobre squircle color tinta (degradado `#2C3C46` arriba -> `#131B21` abajo). La cruz latina no se dibuja: es el hueco entre las páginas (pliegue vertical de 56 px) más un travesaño calado de 280 × 56 px con su centro a ~1/3 de la altura. Una cinta de marcapáginas roja (`#D8543B` -> `#B23A24`, cola en V) cae del lomo. Coherente con el sistema visual «Códice» (rojo rúbrica como único acento).
 
-Razón: reconocible al instante incluso a 16 px (dos barras de alto contraste crema/índigo, ~9:1), tono sobrio acorde con una app de lectura, y mantiene la identidad cromática anterior.
+Razón: mantiene la cruz elegida en la v1.1 pero la integra en un libro, de modo que comunica «lectura bíblica» y no un símbolo genérico; la cinta alude a marcadores y notas. A 16 px se leen el libro y la cruz (contraste crema/tinta ~13:1).
 
-### Medidas (lienzo 1024, cuerpo 824 px, margen 100 px)
-- Altura total de la cruz: 520 px (63 % del cuerpo). Ancho de los brazos: 372 px (brazos iguales de 128 px a cada lado del eje).
-- Grosor de barras: 116 px (14,1 % del cuerpo); esquinas con radio ~4 px.
-- Travesaño: su centro a 1/3 de la altura desde arriba (travesaño de y=top-173 ± 58); el palo inferior mide ~347 px frente a ~173 px superior (proporción latina).
-- Centrado óptico: la caja de la cruz queda 14 px por encima del centro geométrico (eje vertical x=512).
-- Prueba a 16/32 px: legible y equilibrada; a 16 px el travesaño ocupa ~2 px y la cruz se lee sin ambigüedad.
+### Medidas (lienzo 1024, cuerpo 824 px, margen 100 px; origen arriba a la izquierda)
+- Página izquierda: de x=236 a x=484; borde superior curvo (y 300 en el canto, 318 en el pliegue), inferior de 728 a 746. La derecha es simétrica (540-788).
+- Colores de página: izquierda `#EFE7D6`, derecha `#FBF6EA`, con un sombreado del 18 % hacia el pliegue; sombra bajo las páginas (10 px, desenfoque 22 px, 45 %).
+- Travesaño: x 372-652, y 430-486, relleno con el mismo degradado del fondo (en coordenadas absolutas), así el calado es exacto.
+- Cinta: x 496-528, y 690-866, muesca en V de 16 px.
 
 ### Generación
-`scripts/make_icon.sh` -> `scripts/make_icon.swift` (CoreGraphics) -> `App/Icon/Biblia-1024.png` -> iconset temporal (16-512 @1x/@2x con `sips`) -> `App/Icon/Biblia.icns` (`iconutil`). Previsualizaciones: `replica/screens/icon-cross-{1024,32,16}.png`.
+`scripts/make_icon.sh` -> `scripts/make_icon.swift` (CoreGraphics) -> `App/Icon/Biblia-1024.png` -> iconset temporal (16-512 @1x/@2x con `sips`) -> `App/Icon/Biblia.icns` (`iconutil`). Previsualizaciones: `replica/screens/icon-codice-{1024,32,16,dock}.png`.
 
 ## Reglas
 - Prueba sobre dock claro y oscuro; contraste forma/fondo >= 3:1 (cumplido).
 - Sustituible tras el naming final.
 
-## Conceptos descartados (v1.0)
-A "Dos voces, un texto" (columnas solapadas con punto ámbar, icono de 1.0.0) y B "Luz en el margen" (página con versículo en superíndice).
+## Conceptos descartados
+v1.2: B «Cinta» (marcapáginas rojo con cruz calada sobre papel) y C «Página» (libro sin símbolo sobre rojo).
+v1.1: cruz latina crema sobre squircle índigo (`replica/screens/icon-cross-*.png`).
+v1.0: A "Dos voces, un texto" y B "Luz en el margen".
