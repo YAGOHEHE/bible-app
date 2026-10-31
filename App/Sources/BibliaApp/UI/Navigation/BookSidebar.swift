@@ -20,9 +20,6 @@ struct BookSidebar: View {
     private var sections: [TestamentSection] { TestamentSplit.sections(state.bookNames.filter(matches)) }
 
     var body: some View {
-        let selection = Binding<Int?>(
-            get: { state.book },
-            set: { if let n = $0, n != state.book { state.jump(book: n) } })
         let filtering = !filter.trimmingCharacters(in: .whitespaces).isEmpty
         VStack(spacing: 0) {
             HStack(spacing: 6) {
@@ -48,17 +45,17 @@ struct BookSidebar: View {
             if !filtering, !state.recentBooks.isEmpty { RecentChipsRow() }
 
             ScrollViewReader { proxy in
-                List(selection: selection) {
+                // Una fila por libro (con su cuadrícula dentro si es el elegido) y sin selección del
+                // sistema: la List de macOS no recolocaba una fila insertada y la cuadrícula se quedaba
+                // bajo Génesis. Así el número de filas nunca cambia; solo su contenido.
+                List {
                     ForEach(sections, id: \.title) { sec in
                         let open = filtering || (sec.title.hasPrefix("Antiguo") ? otOpen : ntOpen)
                         Section(isExpanded: Binding(
                             get: { open },
                             set: { v in if !filtering { if sec.title.hasPrefix("Antiguo") { otOpen = v } else { ntOpen = v } } })) {
                             ForEach(sec.books, id: \.book) { b in
-                                Text(b.name).tag(b.book)
-                                    .id("book-\(b.book)")
-                                    .accessibilityLabel("\(b.name), libro \(b.book) de 66")
-                                if b.book == state.book { ChapterGrid().selectionDisabled() }
+                                BookRow(book: b).id("book-\(b.book)")
                             }
                         } header: {
                             HStack(spacing: 6) {
@@ -117,6 +114,34 @@ private struct RecentChipsRow: View {
             .padding(.horizontal, 12)
         }
         .padding(.bottom, 6)
+    }
+}
+
+/// Fila de un libro: el nombre (pulsable) y, si es el libro actual, su cuadrícula de capítulos debajo.
+private struct BookRow: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.theme) private var theme
+    let book: BookName
+
+    var body: some View {
+        let current = book.book == state.book
+        VStack(alignment: .leading, spacing: 4) {
+            Button { if !current { state.jump(book: book.book) } } label: {
+                Text(book.name)
+                    .font(theme.uiFont(size: 13, weight: current ? .semibold : .regular))
+                    .foregroundStyle(current ? theme.palette.accent : theme.palette.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 6)
+                        .fill(current ? theme.palette.accent.opacity(0.12) : Color.clear))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(book.name), libro \(book.book) de 66")
+            .accessibilityAddTraits(current ? .isSelected : [])
+            if current { ChapterGrid() }
+        }
+        .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 8))
     }
 }
 
