@@ -70,7 +70,8 @@ public enum ColumnsAttributedBuilder {
         func number(_ label: String, color: NSColor) {
             if ann.isBookmarked { out.append(AnnotationOverlays.bookmarkFlag(verse: row, pt: pt, palette: pal, paragraph: ps)) }
             out.append(NSAttributedString(string: label + "\u{2009}", attributes: [
-                .font: ReaderFonts.verseNumber(size: pt * 0.62), .foregroundColor: color, .baselineOffset: pt * 0.38,
+                .font: ReaderFonts.verseNumber(size: ReaderFonts.verseNumberSize(forReading: pt)), .foregroundColor: color,
+                .baselineOffset: ReaderFonts.verseNumberBaseline(forReading: pt),
                 .paragraphStyle: ps, .bibliaVerse: row, .bibliaVerseNumber: true]))
         }
         func text(_ t: String, color: NSColor, size: CGFloat) {
@@ -109,7 +110,7 @@ public enum ColumnsAttributedBuilder {
             return lm.usedRect(for: tc).height
         }
         func latin(_ ci: Int) -> Bool { columns[ci].language != "zh" }
-        func spacing(_ ci: Int) -> CGFloat { pt * ((latin(ci) ? 1.55 : 1.85) - 1.2) }
+        func spacing(_ ci: Int) -> CGFloat { ReaderFonts.lineSpacing(latin: latin(ci), size: pt) }
 
         // 1) cada celda y su altura natural
         var cells: [[NSAttributedString]] = columns.indices.map { _ in [] }
@@ -204,7 +205,7 @@ public enum GlossAttributedBuilder {
             ps.firstLineHeadIndent = indent
             ps.headIndent = tabLocation
             ps.tabStops = [NSTextTab(textAlignment: .left, location: tabLocation, options: [:])]
-            ps.lineSpacing = gp * ((latin ? 1.5 : 1.8) - 1.2)
+            ps.lineSpacing = ReaderFonts.lineSpacing(latin: latin, size: gp) * 0.9
             ps.paragraphSpacingBefore = i == 0 ? s.pt * 0.1 : 0
             ps.paragraphSpacing = i == g.glosses.count - 1 ? s.pt * 0.3 : s.pt * 0.06
             ps.lineBreakMode = .byWordWrapping

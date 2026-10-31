@@ -4,6 +4,11 @@ import BibliaCore
 /// Capas que se aplican al texto ya maquetado de un capítulo: palabras Strong y resaltado de búsqueda.
 /// Trabajan sobre el `NSMutableAttributedString` (NSTextStorage) y los rangos por versículo de `BuiltChapter`,
 /// de modo que no dependen de cómo se partió el versículo en párrafos/líneas de poesía.
+public extension NSAttributedString.Key {
+    /// Marca la palabra Strong activa (seleccionada en el inspector).
+    static let bibliaStrongActive = NSAttributedString.Key("org.biblia.clasica.strongActive")
+}
+
 public enum ReaderOverlays {
     public static let strongUnderline: NSNumber = NSNumber(value: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue)
 
@@ -13,7 +18,7 @@ public enum ReaderOverlays {
     @discardableResult
     public static func applyStrong(to text: NSMutableAttributedString, ranges: [Int: NSRange],
                                    spans: [Int: [StrongSpan]], verseText: (Int) -> String?,
-                                   palette: ReaderPalette) -> Int {
+                                   palette: ReaderPalette, active: StrongSelection? = nil) -> Int {
         var marked = 0
         let ns = text.string as NSString
         text.beginEditing()
@@ -39,12 +44,27 @@ public enum ReaderOverlays {
                     .underlineStyle: strongUnderline,
                     .underlineColor: palette.strongUnderline,
                 ], range: found)
+                if let a = active, a.verse == verse, a.start == sp.start, a.strong == sp.strong {
+                    text.addAttribute(.bibliaStrongActive, value: true, range: found)
+                }
                 cursor = NSMaxRange(found)
                 marked += 1
             }
         }
         text.endEditing()
         return marked
+    }
+
+    /// Palabra Strong activa (la del inspector): fondo acento y texto onAccent. Va DESPUÉS de repintar los fondos.
+    public static func paintActiveStrong(on text: NSMutableAttributedString, palette: ReaderPalette) {
+        let whole = NSRange(location: 0, length: text.length)
+        text.beginEditing()
+        text.enumerateAttribute(.bibliaStrongActive, in: whole, options: []) { v, r, _ in
+            guard v != nil else { return }
+            text.addAttributes([.backgroundColor: palette.accent, .foregroundColor: palette.onAccent,
+                                .underlineStyle: 0], range: r)
+        }
+        text.endEditing()
     }
 
     private static func isWordBoundary(_ s: NSString, _ r: NSRange) -> Bool {
@@ -79,8 +99,8 @@ public enum ReaderOverlays {
 
 public extension ReaderPalette {
     /// Fondo de las coincidencias de búsqueda (en el texto y en la lista).
-    var searchMatch: NSColor { isDark ? ReaderPalette.hex(0x6B5A1E) : ReaderPalette.hex(0xFFE58A) }
-    /// Fondo de la «pastilla» G25 / H430.
-    var pillBackground: NSColor { isDark ? ReaderPalette.hex(0x9DB0FF) : ReaderPalette.hex(0x3447A0) }
-    var pillText: NSColor { isDark ? ReaderPalette.hex(0x10163A) : NSColor.white }
+    var searchMatch: NSColor { searchHighlight }
+    /// Fondo de la «pastilla» G25 / H430: acento con su texto onAccent.
+    var pillBackground: NSColor { accent }
+    var pillText: NSColor { onAccent }
 }

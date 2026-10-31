@@ -14,7 +14,7 @@ public struct ReaderStyle {
     public var latin: Bool
     /// Un versículo por línea (en vez de párrafos de la tabla `layout`).
     public var perVerse: Bool
-    public static let baseSize: CGFloat = 17
+    public static let baseSize: CGFloat = ReaderFonts.baseSize
 
     /// Anotaciones del capítulo: el constructor inserta ⚑ y ✎ (los resaltados se pintan aparte, ver `AnnotationOverlays`).
     public var annotations = ChapterAnnotations()
@@ -23,8 +23,8 @@ public struct ReaderStyle {
         self.palette = palette; self.fontScale = fontScale; self.latin = latin; self.perVerse = perVerse
     }
     public var pt: CGFloat { ReaderStyle.baseSize * CGFloat(fontScale) }
-    /// Interlineado extra (AppKit lo suma a la altura natural de la fuente).
-    public var lineSpacing: CGFloat { pt * ((latin ? 1.55 : 1.85) - 1.2) }
+    /// Interlineado extra (AppKit lo suma a la altura natural de la fuente): 1,72 latín / 1,9 chino.
+    public var lineSpacing: CGFloat { ReaderFonts.lineSpacing(latin: latin, size: pt) }
 }
 
 /// Capítulo ya maquetado: texto + posiciones de cada versículo.
@@ -72,6 +72,11 @@ public struct BlockExtra {
 }
 
 public enum ChapterAttributedBuilder {
+    /// «Juan 3» -> («Juan», «3»); sin espacio, todo es el número/título.
+    static func splitTitle(_ t: String) -> (String, String) {
+        guard let i = t.lastIndex(of: " ") else { return ("", t) }
+        return (String(t[..<i]), String(t[t.index(after: i)...]))
+    }
     public static func build(title: String, blocks: [BookBlock], style s: ReaderStyle,
                              extras: [Int: BlockExtra] = [:], afterTitle: NSAttributedString? = nil) -> BuiltChapter {
         let pt = s.pt, pal = s.palette
@@ -97,10 +102,16 @@ public enum ChapterAttributedBuilder {
             if let old = ranges[verse] { ranges[verse] = NSUnionRange(old, r) } else { ranges[verse] = r }
         }
 
-        // Título del capítulo
-        let titleFont = ReaderFonts.traits(ReaderFonts.reading(latin: s.latin, size: pt * 1.6), bold: true)
-        out.append(NSAttributedString(string: title + "\n", attributes: [
-            .font: titleFont, .foregroundColor: pal.textPrimary,
+        // Cabecera del capítulo: nombre del libro en mayúsculas (SF semibold 12, espaciado 0,16 em, textMuted)
+        // y debajo el número grande (Literata Medium 3,8 × lectura, acento). `title` = «Juan 3».
+        let (bookPart, numberPart) = Self.splitTitle(title)
+        if !bookPart.isEmpty {
+            out.append(NSAttributedString(string: bookPart.uppercased() + "\n", attributes: [
+                .font: ReaderFonts.chapterBookFont, .foregroundColor: pal.textMuted, .kern: ReaderFonts.chapterBookTracking,
+                .paragraphStyle: para()]))
+        }
+        out.append(NSAttributedString(string: numberPart + "\n", attributes: [
+            .font: ReaderFonts.chapterNumber(readingSize: pt), .foregroundColor: pal.accent,
             .paragraphStyle: para(after: pt * 0.8)]))
         if let n = afterTitle { out.append(n) }
 
@@ -170,8 +181,8 @@ public enum ChapterAttributedBuilder {
                     }
                     if let l = piece.label {
                         out.append(NSAttributedString(string: l + "\u{2009}", attributes: [
-                            .font: ReaderFonts.verseNumber(size: pt * 0.62), .foregroundColor: pal.verseNumber,
-                            .baselineOffset: pt * 0.38, .paragraphStyle: ps,
+                            .font: ReaderFonts.verseNumber(size: ReaderFonts.verseNumberSize(forReading: pt)), .foregroundColor: pal.verseNumber,
+                            .baselineOffset: ReaderFonts.verseNumberBaseline(forReading: pt), .paragraphStyle: ps,
                             .bibliaVerse: piece.verse, .bibliaVerseNumber: true]))
                     }
                     var attrs: [NSAttributedString.Key: Any] = [

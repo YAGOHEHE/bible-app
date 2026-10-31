@@ -86,12 +86,12 @@ import Foundation
 @Suite struct BugfixTests {
     /// BUG-002: apilado cuando cada columna tendría < 300 pt según el ancho realmente disponible.
     @Test func parallelStackedFromAvailableWidth() {
-        // 3 columnas: (w - 48 - 16) / 3 >= 300 => w >= 964
-        #expect(ParallelMetrics.isStacked(availableWidth: 963, columns: 3, layout: .columns))
-        #expect(!ParallelMetrics.isStacked(availableWidth: 964, columns: 3, layout: .columns))
-        // 2 columnas: w >= 656
-        #expect(ParallelMetrics.isStacked(availableWidth: 655, columns: 2, layout: .columns))
-        #expect(!ParallelMetrics.isStacked(availableWidth: 656, columns: 2, layout: .columns))
+        // 3 columnas: (w - 48 - 44 - 72) / 3 >= 300 => w >= 1064 (Códice: margen 44, huecos de 36)
+        #expect(ParallelMetrics.isStacked(availableWidth: 1063, columns: 3, layout: .columns))
+        #expect(!ParallelMetrics.isStacked(availableWidth: 1064, columns: 3, layout: .columns))
+        // 2 columnas: w >= 728
+        #expect(ParallelMetrics.isStacked(availableWidth: 727, columns: 2, layout: .columns))
+        #expect(!ParallelMetrics.isStacked(availableWidth: 728, columns: 2, layout: .columns))
         #expect(ParallelMetrics.isStacked(availableWidth: 2000, columns: 3, layout: .interleaved))
         // 800 de ventana - barra lateral 300 - inspector ~250 = 250 disponibles
         #expect(ParallelMetrics.isStacked(availableWidth: 250, columns: 3, layout: .columns))

@@ -2,6 +2,21 @@ import AppKit
 import BibliaCore
 import ClassicKit
 
+/// NSLayoutManager que pinta los fondos de versículo (selección y resaltados) con esquinas redondeadas.
+/// `fillBackgroundRectArray` existe desde 10.0: es seguro en 10.13. Un rectángulo por línea (los tramos de varias
+/// líneas redondean cada línea; es la limitación del `.backgroundColor` de NSTextView).
+final class RoundedLayoutManager: NSLayoutManager {
+    static let radius: CGFloat = 4
+    override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int,
+                                          forCharacterRange charRange: NSRange, color: NSColor) {
+        color.setFill()
+        for i in 0..<rectCount {
+            let r = rectArray[i]
+            NSBezierPath(roundedRect: r, xRadius: min(Self.radius, r.height / 2), yRadius: min(Self.radius, r.height / 2)).fill()
+        }
+    }
+}
+
 /// NSTextView de solo lectura: ←/→ cambian de capítulo; ⌘= también aumenta el tamaño (teclados sin «+» directo).
 final class ReaderTextView: NSTextView {
     var onPrev: (() -> Void)?
@@ -13,6 +28,16 @@ final class ReaderTextView: NSTextView {
     var menuProvider: ((Int?) -> NSMenu?)?
     /// Esc: devuelve true si lo atendió (vació la selección de versículos).
     var onEscape: (() -> Bool)?
+
+    /// Pila TextKit 1 explícita con `RoundedLayoutManager` (también evita TextKit 2 en macOS 13+).
+    convenience init() {
+        let storage = NSTextStorage()
+        let lm = RoundedLayoutManager()
+        let tc = NSTextContainer(containerSize: NSSize(width: 100, height: CGFloat.greatestFiniteMagnitude))
+        lm.addTextContainer(tc)
+        storage.addLayoutManager(lm)
+        self.init(frame: .zero, textContainer: tc)
+    }
 
     /// Versículo bajo el punto (coordenadas de la vista) y si está sobre un enlace (palabra Strong, icono de nota).
     func verseHit(at p: NSPoint) -> (verse: Int, isLink: Bool)? {
@@ -289,7 +314,7 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
 
     private func updateContainerWidth() {
         let w = scrollView.contentSize.width
-        let cw = max(120, min(760, w - 48))
+        let cw = max(120, min(ReaderFonts.columnWidth, w - 48))
         textView.textContainer?.containerSize = NSSize(width: cw, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainerInset = NSSize(width: max(0, (w - cw) / 2), height: 28)
         if messageLabel.superview != nil {
@@ -327,6 +352,14 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
 
     private var pendingAnchor: Int?
 
+    /// Palabra Strong activa (la del inspector): fondo acento y texto onAccent. nil = ninguna.
+    private(set) var activeStrong: StrongSelection?
+    func setActiveStrong(_ s: StrongSelection?) {
+        guard s != activeStrong else { return }
+        activeStrong = s
+        rerenderKeepingScroll()
+    }
+
     /// «Comparar»: activa la vista paralela y se queda en ese versículo.
     func compare(at verse: Int) {
         pendingAnchor = verse
@@ -342,6 +375,7 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
 
     @objc private func chapterChanged(_ n: Notification) {
         let v = n.userInfo?["scrollTo"] as? Int
+        activeStrong = nil
         render(scrollTo: v)
         if let a = n.userInfo?["flashFrom"] as? Int, let b = n.userInfo?["flashTo"] as? Int { flash(a...b) }
     }
@@ -493,13 +527,15 @@ final class ReaderViewController: NSViewController, NSTextViewDelegate {
     private func applyOverlays(_ storage: NSTextStorage, ranges: [Int: NSRange], id: String, strong: Bool, ends: [Int: Int]) {
         if strong, model.hasStrongs(id) {
             ReaderOverlays.applyStrong(to: storage, ranges: ranges, spans: model.strongSpans(for: id),
-                                       verseText: { [model] in model.verseText(id, verse: $0) }, palette: palette)
+                                       verseText: { [model] in model.verseText(id, verse: $0) }, palette: palette,
+                                       active: activeStrong)
         }
         paintBackgrounds(storage, ranges: ranges, id: id, ends: ends)
     }
 
     /// Fondos: resaltados (por referencia, en cualquier versión), selección (mezclada) y, encima, búsqueda.
     private func paintBackgrounds(_ storage: NSTextStorage, ranges: [Int: NSRange], id: String, ends: [Int: Int]) {
+        defer { if activeStrong != nil { ReaderOverlays.paintActiveStrong(on: storage, palette: palette) } }
         let ch = annotations.chapter
         AnnotationOverlays.applyBackgrounds(to: storage, ranges: ranges, selected: annotations.selectedRows,
                                             annotations: { ch.forDisplayVerse(number: $0, end: ends[$0]) }, palette: palette)

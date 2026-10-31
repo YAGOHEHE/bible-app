@@ -48,6 +48,10 @@ struct AboutView: View {
                 Text("La estructura de párrafos y poesía de la RV1909 se adapta de la Berean Standard Bible (dominio público, https://berean.bible/terms.htm).")
                     .fixedSize(horizontal: false, vertical: true)
 
+                Text("Tipografía").font(.headline)
+                Text("Texto latino en Literata, © 2017 The Literata Project Authors (https://github.com/googlefonts/literata), bajo la licencia SIL Open Font License 1.1 (https://openfontlicense.org). El texto chino usa Songti SC del sistema.")
+                    .fixedSize(horizontal: false, vertical: true)
+
                 Text("Software").font(.headline)
                 Text("Usa GRDB.swift (licencia MIT, Gwendal Roué).")
                 Text("KJV: en el Reino Unido la Corona restringe la impresión de ejemplares en papel; no afecta al uso digital en otros países.")

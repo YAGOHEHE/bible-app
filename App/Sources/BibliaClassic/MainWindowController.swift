@@ -15,6 +15,7 @@ private extension NSToolbarItem.Identifier {
     static let strong = NSToolbarItem.Identifier("strong")
     static let history = NSToolbarItem.Identifier("history")
     static let inspector = NSToolbarItem.Identifier("inspector")
+    static let aa = NSToolbarItem.Identifier("aa")
 }
 
 /// Ventana principal: NSSplitViewController (barra lateral | lector) + NSToolbar.
@@ -29,21 +30,29 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     private(set) var commands: VerseCommands!
     private var inspectorItem: NSSplitViewItem!
     private var sidebarItem: NSSplitViewItem!
-    private let strongButton = NSButton()
-    private let inspectorButton = NSButton()
-    private let historyButton = NSButton()
+    private let strongButton = ToolbarChip(frame: NSRect(x: 0, y: 0, width: 84, height: 30))
+    private let inspectorButton = ToolbarChip(frame: NSRect(x: 0, y: 0, width: 40, height: 30))
     var onOpenHistory: (() -> Void)?
     private let split = NSSplitViewController()
     private let prevButton = NSButton()
     private let nextButton = NSButton()
-    private let translationPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 230, height: 26), pullsDown: false)
-    private let gotoField = NSTextField(frame: NSRect(x: 0, y: 0, width: 190, height: 24))
-    private let parallelButton = NSButton()
-    private let layoutPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 176, height: 26), pullsDown: false)
+    // «Códice»: referencia («Juan 3 ⌘L»), versión (sigla en acento), Paralelo / Strong / Aa / Inspector.
+    private let refButton = ToolbarChip(frame: NSRect(x: 0, y: 0, width: 176, height: 30))
+    private let versionButton = ToolbarChip(frame: NSRect(x: 0, y: 0, width: 70, height: 30))
+    private let gotoField = NSTextField(frame: NSRect(x: 0, y: 0, width: 252, height: 24))
+    private let parallelButton = ToolbarChip(frame: NSRect(x: 0, y: 0, width: 108, height: 30))
+    private let layoutControl = NSSegmentedControl(labels: ParallelLayout.allCases.map { $0 == .columns ? "Columnas" : "Intercalado" },
+                                                   trackingMode: .selectOne, target: nil, action: nil)
     private let glossesPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 92, height: 26), pullsDown: true)
+    private let aaButton = ToolbarChip(frame: NSRect(x: 0, y: 0, width: 50, height: 30))
+    private let aaVC = AaPopoverController()
+    private lazy var aaPopover: NSPopover = {
+        let p = NSPopover(); p.behavior = .transient; p.contentViewController = aaVC; return p
+    }()
+    private lazy var gotoPopover: NSPopover = {
+        let p = NSPopover(); p.behavior = .transient; p.contentViewController = GotoPopoverController(field: gotoField); return p
+    }()
     var onOpenVersions: (() -> Void)?
-    private let smaller = NSButton()
-    private let larger = NSButton()
 
     init(model: ReaderModel, settings: ClassicSettings, annotations: AnnotationsModel) {
         self.model = model; self.settings = settings; self.annotations = annotations
@@ -80,6 +89,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         w.setContentSize(NSSize(width: 1000, height: 700))
         w.minSize = NSSize(width: 720, height: 480)
         w.title = "Biblia Clásica"
+        w.titleVisibility = .hidden        // la referencia ya está en el botón central de la barra
         w.center()
         w.setFrameAutosaveName("MainWindow")
         super.init(window: w)
@@ -92,7 +102,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         NotificationCenter.default.addObserver(self, selector: #selector(selectionChangedForInspector), name: .classicSelectionChanged, object: annotations)
         NotificationCenter.default.addObserver(self, selector: #selector(windowWillClose(_:)), name: NSWindow.willCloseNotification, object: w)
 
-        let tb = NSToolbar(identifier: NSToolbar.Identifier("MainToolbar"))
+        let tb = NSToolbar(identifier: NSToolbar.Identifier("MainToolbarCodice"))
         tb.delegate = self
         tb.displayMode = .iconOnly
         tb.allowsUserCustomization = false
@@ -112,6 +122,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             guard let s = self else { return }
             s.showInspector()
             s.inspector.showStrong(sel, translationId: id, word: word, length: len)
+            s.reader.setActiveStrong(sel)
         }
         inspector.onNavigate = { [weak self] ref, t in self?.navigateFromInspector(ref, t) }
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(systemAppearanceChanged),
@@ -140,7 +151,32 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         w.backgroundColor = ReaderPalette.resolve(theme).background
     }
 
-    @objc private func themeChanged() { applyWindowAppearance() }
+    @objc private func themeChanged() {
+        applyWindowAppearance()
+        styleToolbar()
+    }
+
+    /// Paleta, textos y estado de los controles «chip» de la barra.
+    private func styleToolbar() {
+        let pal = ReaderPalette.resolve(settings.theme)
+        for c in [refButton, versionButton, parallelButton, strongButton, aaButton, inspectorButton] { c.palette = pal }
+        let ui = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        refButton.parts = [.init(text: model.chapterTitle, font: ui, color: { $0.textPrimary }),
+                           .init(text: "\u{2318}L", font: NSFont.systemFont(ofSize: 11), color: { $0.textMuted })]
+        let sigla = model.translationId
+        versionButton.parts = [.init(text: sigla, font: NSFont.systemFont(ofSize: 13, weight: .bold), color: { $0.accent })]
+        versionButton.setAccessibilityValue(sigla)
+        aaButton.parts = [.init(text: "Aa", font: NSFont.systemFont(ofSize: 13, weight: .semibold), color: { $0.textPrimary })]
+        strongButton.parts = [.init(text: "\u{03B1}", font: NSFont.systemFont(ofSize: 14, weight: .semibold), color: { $0.textPrimary }),
+                              .init(text: "Strong", font: ui, color: { $0.textPrimary })]
+        parallelButton.parts = [.init(text: "Paralelo", font: ui, color: { $0.textPrimary })]
+        // Con Strong inexistente en la versión el chip queda desactivado.
+        aaVC.themeControl.selectedSegment = ThemeChoice.allCases.firstIndex(of: settings.theme) ?? 0
+        aaVC.percent.stringValue = "\(FontScale.percent(settings.fontScale)) %"
+        aaVC.smaller.isEnabled = settings.fontScale > FontScale.min + 0.001
+        aaVC.larger.isEnabled = settings.fontScale < FontScale.max - 0.001
+        layoutControl.setSelected(true, forSegment: ParallelLayout.allCases.firstIndex(of: model.parallel.layout) ?? 0)
+    }
     @objc private func systemAppearanceChanged() {
         guard settings.theme == .system else { return }
         // La apariencia efectiva de la app se actualiza un instante después de la notificación.
@@ -156,17 +192,39 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         window?.title = "\(model.chapterTitle) — Biblia Clásica"
         prevButton.isEnabled = model.canGoPrev
         nextButton.isEnabled = model.canGoNext
-        rebuildTranslationPopup()
+        styleToolbar()
     }
 
-    private func rebuildTranslationPopup() {
-        translationPopup.removeAllItems()
+    /// Menú de versiones del chip (sigla en acento): se abre bajo el botón.
+    @objc private func versionClicked(_ sender: ToolbarChip) {
+        let m = NSMenu(title: "Versión")
         for t in model.translations {
-            translationPopup.addItem(withTitle: ReaderModel.menuTitle(t))
-            translationPopup.lastItem?.representedObject = t.id
+            let it = NSMenuItem(title: ReaderModel.menuTitle(t), action: #selector(versionPicked(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = t.id
+            it.state = t.id == model.translationId ? .on : .off
+            m.addItem(it)
         }
-        if let i = model.translations.firstIndex(where: { $0.id == model.translationId }) { translationPopup.selectItem(at: i) }
+        m.popUp(positioning: m.items.first { $0.state == .on }, at: NSPoint(x: 0, y: sender.bounds.height - 2), in: sender)
     }
+    @objc private func versionPicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? String { model.setTranslation(id) }
+        reader.focusReader()
+    }
+
+    @objc private func refClicked(_ sender: Any?) { focusGoto() }
+
+    @objc private func aaClicked(_ sender: ToolbarChip) {
+        styleToolbar()
+        if aaPopover.isShown { aaPopover.performClose(nil); return }
+        aaPopover.appearance = window?.appearance
+        aaPopover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+    }
+    @objc private func aaThemePicked(_ sender: NSSegmentedControl) {
+        if let t = ThemeChoice.allCases[safe: sender.selectedSegment] { settings.theme = t }
+    }
+    @objc private func aaSmaller(_ sender: Any?) { settings.stepFont(-1) }
+    @objc private func aaLarger(_ sender: Any?) { settings.stepFont(1) }
 
     // MARK: parallel chrome
 
@@ -189,9 +247,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     }
 
     func syncParallelChrome() {
-        parallelButton.state = model.parallel.on ? .on : .off
+        parallelButton.chipActive = model.parallel.on
         parallelButton.setAccessibilityValue(model.parallel.on ? "activada" : "desactivada")
-        layoutPopup.selectItem(at: ParallelLayout.allCases.firstIndex(of: model.parallel.layout) ?? 0)
+        layoutControl.setSelected(true, forSegment: ParallelLayout.allCases.firstIndex(of: model.parallel.layout) ?? 0)
         rebuildGlossesMenu()
     }
 
@@ -235,8 +293,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     @objc private func toggleGlossesVisible(_ sender: Any?) { model.setGlossesOn(!model.parallel.glossesOn) }
     @objc private func openVersions(_ sender: Any?) { onOpenVersions?() }
     @objc private func parallelToggled(_ sender: Any?) { model.toggleParallel(); reader.focusReader() }
-    @objc private func layoutPicked(_ sender: NSPopUpButton) {
-        model.setParallelLayout(ParallelLayout.allCases[max(0, sender.indexOfSelectedItem)])
+    @objc private func layoutPicked(_ sender: NSSegmentedControl) {
+        model.setParallelLayout(ParallelLayout.allCases[max(0, sender.selectedSegment)])
     }
 
     // MARK: búsqueda / Strong / inspector
@@ -267,24 +325,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     }
 
     @objc private func strongChrome() {
-        strongButton.state = settings.strongMode ? .on : .off
+        strongButton.chipActive = settings.strongMode
         strongButton.isEnabled = strongAvailable
         strongButton.setAccessibilityValue(settings.strongMode ? "activado" : "desactivado")
-        strongButton.attributedTitle = MainWindowController.strongTitle(on: settings.strongMode, enabled: strongAvailable)
-    }
-
-    static func strongTitle(on: Bool, enabled: Bool) -> NSAttributedString {
-        let c = on ? NSColor.alternateSelectedControlColor : NSColor.labelColor
-        return NSAttributedString(string: "abc", attributes: [
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-            .foregroundColor: enabled ? c : NSColor.disabledControlTextColor,
-            .underlineStyle: NSNumber(value: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue),
-            .underlineColor: enabled ? c : NSColor.disabledControlTextColor])
     }
 
     @objc func toggleInspector(_ sender: Any?) {
-        if inspectorItem.isCollapsed { showInspector() } else { inspector.flushNote(); inspectorItem.animator().isCollapsed = true }
-        inspectorButton.state = inspectorItem.isCollapsed ? .off : .on
+        if inspectorItem.isCollapsed { showInspector() } else { inspector.flushNote(); inspectorItem.animator().isCollapsed = true; reader.setActiveStrong(nil) }
+        inspectorButton.chipActive = !inspectorItem.isCollapsed
     }
 
     func showInspector() {
@@ -300,7 +348,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             w.setFrame(f, display: true)
         }
         inspectorItem.isCollapsed = false
-        inspectorButton.state = .on
+        inspectorButton.chipActive = true
     }
 
     var inspectorVisible: Bool { !inspectorItem.isCollapsed }
@@ -360,7 +408,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         if !model.navigate(to: ref, translation: translation) { NSSound.beep() }
     }
 
-    @objc private func openHistory(_ sender: Any?) { onOpenHistory?() }
 
     // MARK: actions
 
@@ -375,7 +422,15 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         reader.focusReader()
     }
 
+    /// ⌘L / botón de referencia: popover «Ir a» bajo el botón de la barra (o bajo el lector si la barra no lo muestra).
     func focusGoto() {
+        if gotoPopover.isShown { window?.makeFirstResponder(gotoField); gotoField.selectText(nil); return }
+        gotoPopover.appearance = window?.appearance
+        if refButton.window != nil {
+            gotoPopover.show(relativeTo: refButton.bounds, of: refButton, preferredEdge: .minY)
+        } else if let v = window?.contentView {
+            gotoPopover.show(relativeTo: NSRect(x: v.bounds.midX - 1, y: v.bounds.maxY - 2, width: 2, height: 2), of: v, preferredEdge: .minY)
+        }
         window?.makeFirstResponder(gotoField)
         gotoField.selectText(nil)
     }
@@ -387,6 +442,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         case .went:
             reader.hideMessage()
             sender.stringValue = ""
+            gotoPopover.performClose(nil)
             reader.focusReader()
         case .failed(let f):
             reader.showMessage(model.gotoMessage(f, input: text))
@@ -397,6 +453,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
         if sel == #selector(NSResponder.cancelOperation(_:)) {
             gotoField.stringValue = ""
             reader.hideMessage()
+            gotoPopover.performClose(nil)
             reader.focusReader()
             return true
         }
@@ -406,13 +463,13 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
     // MARK: NSToolbarDelegate
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.prev, .next, .translation, .parallel, .layout, .glosses, .goto, .strong, .history, .inspector, .fontSmaller, .fontLarger, .flexibleSpace, .space]
+        [.prev, .next, .goto, .translation, .parallel, .layout, .glosses, .strong, .aa, .inspector, .flexibleSpace, .space]
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        var ids: [NSToolbarItem.Identifier] = [.prev, .next, .translation, .parallel]
+        var ids: [NSToolbarItem.Identifier] = [.prev, .next, .flexibleSpace, .goto, .translation, .flexibleSpace, .parallel]
         if model.parallel.on { ids.append(.layout) }
         if model.parallel.on && model.parallel.layout == .interleaved { ids.append(.glosses) }
-        return ids + [.flexibleSpace, .goto, .strong, .history, .inspector, .fontSmaller, .fontLarger]
+        return ids + [.strong, .aa, .inspector]
     }
 
     private func configure(_ b: NSButton, image: NSImage?, title: String, action: Selector, size: NSSize) {
@@ -440,29 +497,30 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             nextButton.toolTip = "Capítulo siguiente (⌘])"
             item.label = "Siguiente"; fit(nextButton)
         case .translation:
-            translationPopup.target = self
-            translationPopup.action = #selector(translationPicked(_:))
-            translationPopup.setAccessibilityLabel("Versión")
-            translationPopup.toolTip = "Versión de la Biblia"
-            rebuildTranslationPopup()
-            item.label = "Versión"; fit(translationPopup)
+            versionButton.target = self; versionButton.action = #selector(versionClicked(_:))
+            versionButton.setAccessibilityLabel("Versión")
+            versionButton.toolTip = "Versión de la Biblia"
+            versionButton.chevron = true
+            styleToolbar()
+            versionButton.frame.size.width = versionButton.fittingWidth(minWidth: 62)
+            item.label = "Versión"; fit(versionButton)
         case .parallel:
-            configure(parallelButton, image: ParallelIcon.image(), title: "Vista paralela", action: #selector(parallelToggled(_:)), size: NSSize(width: 36, height: 25))
-            parallelButton.setButtonType(.pushOnPushOff)
-            parallelButton.alternateImage = ParallelIcon.image(color: NSColor.alternateSelectedControlColor)
+            parallelButton.target = self; parallelButton.action = #selector(parallelToggled(_:))
+            parallelButton.iconProvider = { ChipIcons.parallel($0) }
+            parallelButton.setAccessibilityLabel("Vista paralela")
             parallelButton.toolTip = "Vista paralela (⌘\\ o ⌥⌘P)"
-            item.label = "Paralela"; fit(parallelButton); syncParallelChrome()
+            styleToolbar()
+            parallelButton.frame.size.width = parallelButton.fittingWidth()
+            item.label = "Paralelo"; fit(parallelButton); syncParallelChrome()
         case .layout:
-            if layoutPopup.numberOfItems == 0 {
-                for l in ParallelLayout.allCases { layoutPopup.addItem(withTitle: MainWindowController.layoutTitle(l)) }
-                layoutPopup.target = self; layoutPopup.action = #selector(layoutPicked(_:))
-                layoutPopup.setAccessibilityLabel("Disposición de la vista paralela")
-            }
-            item.label = "Disposición"; fit(layoutPopup); syncParallelChrome()
+            layoutControl.target = self; layoutControl.action = #selector(layoutPicked(_:))
+            layoutControl.setAccessibilityLabel("Disposición de la vista paralela")
+            layoutControl.sizeToFit()
+            item.label = "Disposición"; fit(layoutControl); syncParallelChrome()
         case .glosses:
             item.label = "Glosas"; fit(glossesPopup); syncParallelChrome()
         case .goto:
-            gotoField.placeholderString = "Ir a… (⌘L)"
+            gotoField.placeholderString = "Ir a… Juan 3:16"
             gotoField.bezelStyle = .roundedBezel
             gotoField.isBezeled = true
             gotoField.target = self
@@ -470,32 +528,39 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSTextF
             gotoField.delegate = self
             gotoField.setAccessibilityLabel("Ir a referencia")
             gotoField.toolTip = "Ir a referencia: Juan 3:16, 约3:16, 約3:16, John 3:16"
-            item.label = "Ir a"; fit(gotoField)
+            refButton.target = self; refButton.action = #selector(refClicked(_:))
+            refButton.chipStyle = .field
+            refButton.trailingLast = true
+            refButton.setAccessibilityLabel("Ir a referencia")
+            refButton.toolTip = "Ir a referencia (⌘L)"
+            styleToolbar()
+            item.label = "Ir a"; fit(refButton)
         case .strong:
-            configure(strongButton, image: nil, title: "Modo Strong", action: #selector(toggleStrong(_:)), size: NSSize(width: 46, height: 25))
-            strongButton.setButtonType(.pushOnPushOff)
+            strongButton.target = self; strongButton.action = #selector(toggleStrong(_:))
+            strongButton.setAccessibilityLabel("Modo Strong")
             strongButton.toolTip = "Modo Strong (⌥⌘S)"
+            styleToolbar()
+            strongButton.frame.size.width = strongButton.fittingWidth()
             item.label = "Strong"; fit(strongButton); strongChrome()
-        case .history:
-            configure(historyButton, image: ToolbarIcons.clock(), title: "Historial de lectura", action: #selector(openHistory(_:)), size: NSSize(width: 36, height: 25))
-            historyButton.toolTip = "Historial de lectura (⌘Y)"
-            item.label = "Historial"; fit(historyButton)
+        case .aa:
+            aaButton.target = self; aaButton.action = #selector(aaClicked(_:))
+            aaButton.setAccessibilityLabel("Tema y tamaño de letra")
+            aaButton.toolTip = "Tema y tamaño de letra"
+            aaVC.themeControl.target = self; aaVC.themeControl.action = #selector(aaThemePicked(_:))
+            aaVC.smaller.target = self; aaVC.smaller.action = #selector(aaSmaller(_:))
+            aaVC.larger.target = self; aaVC.larger.action = #selector(aaLarger(_:))
+            styleToolbar()
+            aaButton.frame.size.width = aaButton.fittingWidth(minWidth: 44)
+            item.label = "Tema y tamaño"; fit(aaButton)
         case .inspector:
-            configure(inspectorButton, image: ToolbarIcons.inspector(), title: "Inspector", action: #selector(toggleInspector(_:)), size: NSSize(width: 36, height: 25))
-            inspectorButton.setButtonType(.pushOnPushOff)
-            inspectorButton.state = inspectorItem.isCollapsed ? .off : .on
+            inspectorButton.target = self; inspectorButton.action = #selector(toggleInspector(_:))
+            inspectorButton.iconProvider = { ChipIcons.inspector($0) }
+            inspectorButton.setAccessibilityLabel("Inspector")
             inspectorButton.toolTip = "Inspector: Strong y referencias (⌘I)"
+            inspectorButton.chipActive = !inspectorItem.isCollapsed
+            styleToolbar()
+            inspectorButton.frame.size.width = inspectorButton.fittingWidth(minWidth: 40)
             item.label = "Inspector"; fit(inspectorButton)
-        case .fontSmaller:
-            configure(smaller, image: nil, title: "Reducir tamaño de letra", action: #selector(fontSmaller(_:)), size: NSSize(width: 34, height: 25))
-            smaller.attributedTitle = NSAttributedString(string: "A", attributes: [.font: NSFont.systemFont(ofSize: 11)])
-            smaller.toolTip = "Reducir tamaño (⌘−)"
-            item.label = "Menor"; fit(smaller)
-        case .fontLarger:
-            configure(larger, image: nil, title: "Aumentar tamaño de letra", action: #selector(fontLarger(_:)), size: NSSize(width: 34, height: 25))
-            larger.attributedTitle = NSAttributedString(string: "A", attributes: [.font: NSFont.systemFont(ofSize: 17)])
-            larger.toolTip = "Aumentar tamaño (⌘+)"
-            item.label = "Mayor"; fit(larger)
         default:
             return nil
         }
@@ -525,19 +590,19 @@ enum ParallelIcon {
 
 /// Iconos de la barra de herramientas dibujados como plantillas (sin SF Symbols, inexistentes en 10.13).
 enum ToolbarIcons {
-    static func inspector() -> NSImage {
+    static func inspector(color: NSColor? = nil) -> NSImage {
         let img = NSImage(size: NSSize(width: 18, height: 14), flipped: false) { r in
-            NSColor.black.setStroke()
+            (color ?? NSColor.black).setStroke()
             let box = NSBezierPath(roundedRect: r.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2)
             box.lineWidth = 1.3; box.stroke()
             let bar = NSBezierPath()
             bar.move(to: NSPoint(x: r.maxX - 6, y: r.minY + 1)); bar.line(to: NSPoint(x: r.maxX - 6, y: r.maxY - 1))
             bar.lineWidth = 1.3; bar.stroke()
-            NSColor.black.setFill()
+            (color ?? NSColor.black).setFill()
             NSRect(x: r.maxX - 5, y: r.minY + 2, width: 3.5, height: r.height - 4).fill()
             return true
         }
-        img.isTemplate = true
+        img.isTemplate = color == nil
         return img
     }
 

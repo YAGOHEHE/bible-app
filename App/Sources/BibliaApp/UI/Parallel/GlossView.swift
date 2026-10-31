@@ -23,10 +23,10 @@ struct GlossGroupView: View {
                 let prev = b.id > 0 ? allBlocks[safe: b.id - 1] : nil
                 BlockView(block: b, prev: prev, perVerse: false, gapOverride: gap(for: b, prev: prev))
             }
-            VStack(alignment: .leading, spacing: theme.pt * 0.18) {
+            VStack(alignment: .leading, spacing: ParallelMetrics.glossVersionGap) {
                 ForEach(group.glosses) { g in GlossLineView(line: g, selected: selected) }
             }
-            .padding(.top, group.glosses.isEmpty ? 0 : theme.pt * 0.4)
+            .padding(.top, group.glosses.isEmpty ? 0 : ParallelMetrics.glossVersionGap)
             .contentShape(Rectangle())
             .onTapGesture {
                 let m = NSEvent.modifierFlags
@@ -39,7 +39,7 @@ struct GlossGroupView: View {
     /// Aire generoso entre versículos; dentro de un versículo (líneas de poesía) manda la separación normal.
     private func gap(for b: BookBlock, prev: BookBlock?) -> CGFloat? {
         guard let prev, b.kind != .heading, prev.kind != .heading, b.pieces.first?.label != nil else { return nil }
-        return theme.pt * 1.0
+        return ParallelMetrics.glossVerseGap
     }
 }
 

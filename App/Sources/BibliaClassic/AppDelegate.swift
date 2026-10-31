@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("Biblia Clásica %@ — %@", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?", SQLiteProbe.run().summary)
+        let literata = FontRegistry.registerBundledFonts()      // Literata (OFL); 0 = serif del sistema
+        NSLog("Literata: %d/%d TTF registrados, disponible=%@", literata, FontRegistry.literataFiles.count, FontRegistry.literataAvailable ? "sí" : "no")
         settings = ClassicSettings()
         let user = (try? UserStore.defaultURL(folder: "Biblia Clásica")).flatMap { try? UserStore(path: $0.path) }
         model = ReaderModel(settings: settings, user: user)

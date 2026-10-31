@@ -29,48 +29,62 @@ struct NotesPanel: View {
 
     private func controls(_ m: AnnotationListModel, _ text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], alignment: .leading, spacing: 6) {
+            FlowLayout(spacing: 6, lineSpacing: 6) {
                 ForEach(AnnotationKindFilter.allCases) { k in
                     chip(k, m)
                 }
             }
             if m.kind == .highlights {
                 HStack(spacing: 8) {
-                    Text("Color").font(.caption).foregroundStyle(theme.palette.textSecondary)
+                    Text("Color").font(theme.uiFont(size: 11)).foregroundStyle(theme.palette.textSecondary)
                     swatch(nil, m)
                     ForEach(HighlightColor.allCases) { swatch($0, m) }
                     Spacer(minLength: 0)
                 }
             }
-            HStack(spacing: 6) {
-                Picker("Libro", selection: Binding(get: { m.book ?? 0 }, set: { m.book = $0 == 0 ? nil : $0 })) {
-                    Text("Todos los libros").tag(0)
-                    Divider()
-                    ForEach(state.bookNames, id: \.book) { Text($0.name).tag($0.book) }
+            HStack(spacing: 4) {
+                Menu {
+                    Picker("Libro", selection: Binding(get: { m.book ?? 0 }, set: { m.book = $0 == 0 ? nil : $0 })) {
+                        Text("Todos los libros").tag(0)
+                        Divider()
+                        ForEach(state.bookNames, id: \.book) { Text($0.name).tag($0.book) }
+                    }
+                    .pickerStyle(.inline).labelsHidden()
+                } label: {
+                    Text("\(m.book.map { state.bookName($0) } ?? "Todos los libros") ▾").lineLimit(1)
                 }
-                .pickerStyle(.menu).labelsHidden()
                 .help("Filtrar por libro")
                 .accessibilityLabel("Filtrar por libro")
-                Picker("Orden", selection: Binding(get: { m.sort }, set: { m.sort = $0 })) {
-                    Text("Orden bíblico").tag(AnnotationSort.canonical)
-                    Text("Recientes").tag(AnnotationSort.updated)
+                Text("·").foregroundStyle(theme.palette.textMuted)
+                Menu {
+                    Picker("Orden", selection: Binding(get: { m.sort }, set: { m.sort = $0 })) {
+                        Text("Orden bíblico").tag(AnnotationSort.canonical)
+                        Text("Recientes").tag(AnnotationSort.updated)
+                    }
+                    .pickerStyle(.inline).labelsHidden()
+                } label: {
+                    Text("\(m.sort == .canonical ? "Orden bíblico" : "Recientes") ▾").lineLimit(1)
                 }
-                .pickerStyle(.menu).labelsHidden().fixedSize()
                 .help("Ordenar")
                 .accessibilityLabel("Orden de la lista")
+                Spacer(minLength: 0)
             }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            .font(theme.uiFont(size: 12))
+            .foregroundStyle(theme.palette.textSecondary)
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(theme.palette.textMuted)
                 TextField("Buscar en las notas", text: text)
                     .textFieldStyle(.plain)
                     .accessibilityLabel("Buscar en el texto de las notas")
                 if !m.text.isEmpty {
                     Button { m.text = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Borrar búsqueda")
+                        .buttonStyle(.plain).foregroundStyle(theme.palette.textMuted).accessibilityLabel("Borrar búsqueda")
                 }
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5)))
+            .background(RoundedRectangle(cornerRadius: 8).fill(theme.palette.surface))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(theme.palette.border, lineWidth: 1))
         }
         .padding(10)
     }
@@ -79,11 +93,11 @@ struct NotesPanel: View {
         let sel = m.kind == k
         return Button { m.kind = k } label: {
             Text("\(k.label) \(k.count(m.counts))")
-                .font(.system(size: 12, weight: sel ? .semibold : .regular)).lineLimit(1)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .frame(maxWidth: .infinity)
-                .background(Capsule().fill(sel ? theme.palette.accent : Color.secondary.opacity(0.14)))
-                .foregroundStyle(sel ? theme.palette.onAccent : theme.palette.textPrimary)
+                .font(theme.uiFont(size: 11, weight: sel ? .semibold : .regular)).lineLimit(1).monospacedDigit()
+                .padding(.horizontal, 9).padding(.vertical, 3)
+                .background(Capsule().fill(sel ? theme.palette.textPrimary : Color.clear))
+                .overlay(Capsule().strokeBorder(sel ? Color.clear : theme.palette.border, lineWidth: 1))
+                .foregroundStyle(sel ? theme.palette.background : theme.palette.textSecondary)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(k.label), \(k.count(m.counts))")
@@ -110,27 +124,38 @@ struct NotesPanel: View {
 
     private func list(_ m: AnnotationListModel) -> some View {
         List {
-            ForEach(m.items) { item in
-                AnnotationRow(item: item)
-                    .contentShape(Rectangle())
-                    .onTapGesture { state.navigate(to: item) }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) { requestDelete(item, m) } label: { Label("Eliminar", systemImage: "trash") }
-                    }
-                    .contextMenu {
-                        if item.kind == .highlight {
-                            Menu("Cambiar color") {
-                                ForEach(HighlightColor.allCases) { c in
-                                    Button(c.displayName) { m.recolor(item, to: c) }.disabled(item.color == c)
-                                }
+            ForEach(AnnotationGrouping.byChapter(m.items)) { group in
+                Section {
+                    ForEach(group.items) { item in
+                        AnnotationRow(item: item)
+                            .contentShape(Rectangle())
+                            .onTapGesture { state.navigate(to: item) }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) { requestDelete(item, m) } label: { Label("Eliminar", systemImage: "trash") }
                             }
-                        }
-                        Button("Ir al pasaje") { state.navigate(to: item) }
-                        Button("Eliminar", role: .destructive) { requestDelete(item, m) }
+                            .contextMenu {
+                                if item.kind == .highlight {
+                                    Menu("Cambiar color") {
+                                        ForEach(HighlightColor.allCases) { c in
+                                            Button(c.displayName) { m.recolor(item, to: c) }.disabled(item.color == c)
+                                        }
+                                    }
+                                }
+                                Button("Ir al pasaje") { state.navigate(to: item) }
+                                Button("Eliminar", role: .destructive) { requestDelete(item, m) }
+                            }
                     }
+                } header: {
+                    Text("\(state.bookName(group.book)) \(group.chapter)".uppercased())
+                        .font(theme.uiFont(size: 11, weight: .semibold)).tracking(0.8)
+                        .foregroundStyle(theme.palette.textMuted)
+                        .accessibilityLabel("\(state.bookName(group.book)) \(group.chapter)")
+                        .accessibilityAddTraits(.isHeader)
+                }
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
     }
 
     private func requestDelete(_ item: AnnotationItem, _ m: AnnotationListModel) {

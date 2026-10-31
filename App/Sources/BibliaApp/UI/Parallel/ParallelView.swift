@@ -28,9 +28,11 @@ struct ParallelView: View {
             } else {
                 GeometryReader { geo in
                     // BUG-002: ancho realmente disponible (tras barra lateral e inspector), no el de la ventana.
-                    ParallelContent(stacked: ParallelMetrics.isStacked(availableWidth: geo.size.width,
-                                                                       columns: state.parallelColumns.count,
-                                                                       layout: state.parallelLayout))
+                    let stacked = ParallelMetrics.isStacked(availableWidth: geo.size.width,
+                                                            columns: state.parallelColumns.count,
+                                                            layout: state.parallelLayout)
+                    // Identidad distinta por estilo: el LazyVStack no reutiliza filas de columnas como filas de glosas.
+                    ParallelContent(stacked: stacked).id(stacked)
                 }
                 .id(state.chapterKey + state.parallelColumns.map(\.id).joined() + state.glossColumns.map(\.id).joined()
                     + (state.glossMode ? "g" : "c"))
@@ -46,19 +48,48 @@ struct ParallelView: View {
 
 enum ParallelMetrics {
     static let minColumn: CGFloat = 300
-    static let columnGap: CGFloat = 8
+    /// «Códice»: 36 pt entre columnas, margen común de 44 pt para el número de versículo.
+    static let columnGap: CGFloat = 36
+    static let gutter: CGFloat = 44
     static let sidePadding: CGFloat = 48
+    /// Estilo «Principal + glosas»: 6 pt entre versiones de un versículo y 18 pt entre versículos.
+    static let glossVersionGap: CGFloat = 6
+    static let glossVerseGap: CGFloat = 18
 
     /// Ancho por columna dado el ancho disponible del panel de lectura.
     static func columnWidth(availableWidth: CGFloat, columns: Int) -> CGFloat {
         let n = CGFloat(max(1, columns))
-        return (availableWidth - sidePadding - (n - 1) * columnGap) / n
+        return (availableWidth - sidePadding - gutter - (n - 1) * columnGap) / n
     }
 
     /// ¿Disposición apilada? Si el usuario eligió intercalado o cada columna cabría en < 300 pt.
     static func isStacked(availableWidth: CGFloat, columns: Int, layout: ParallelLayout) -> Bool {
         layout == .interleaved || columnWidth(availableWidth: availableWidth, columns: columns) < minColumn
     }
+}
+
+/// Reglas de las cabeceras de columna (puras).
+enum ParallelColumnRules {
+    /// La columna principal no se puede quitar (su × no se muestra); las demás sí.
+    static func canRemove(_ id: String, primary: String) -> Bool { id != primary }
+}
+
+/// Banda de fondo de una fila: UNA sola para todas las columnas (y el margen del número).
+enum ParallelBand {
+    /// La selección gana (mezclada con el resaltado de usuario); luego el resaltado; luego el destello de salto.
+    static func fill(selected: Bool, highlight: HighlightColor?, flashAlpha: Double, palette: ThemePalette) -> Color? {
+        if selected { return highlight.flatMap { palette.highlightSelected[$0] } ?? palette.selection }
+        if let h = highlight, let c = palette.highlight[h] { return c }
+        if flashAlpha > 0 { return palette.selection.opacity(flashAlpha) }
+        return nil
+    }
+}
+
+/// Alineación vertical por la primera línea del texto (el número del margen cae sobre la línea base del versículo,
+/// aunque una columna tenga un título de sección encima).
+extension VerticalAlignment {
+    private enum VerseBase: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d[.top] } }
+    static let verseBase = VerticalAlignment(VerseBase.self)
 }
 
 private struct ParallelContent: View {
@@ -175,37 +206,39 @@ private struct ColumnHeaders: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(spacing: ParallelMetrics.columnGap) {
-            ForEach(Array(state.parallelColumns.enumerated()), id: \.element.id) { i, t in
-                HStack(spacing: 6) {
-                    Text(t.id).font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(versionAccent(i, theme))
-                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                    Text(languageName(t.language)).font(.system(size: 11))
-                        .lineLimit(1).truncationMode(.tail)
-                        .foregroundStyle(theme.palette.textSecondary)
-                    Spacer(minLength: 0)
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Color.clear.frame(width: ParallelMetrics.gutter, height: 1)
+            HStack(alignment: .firstTextBaseline, spacing: ParallelMetrics.columnGap) {
+                ForEach(Array(state.parallelColumns.enumerated()), id: \.element.id) { i, t in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(t.id).font(theme.uiFont(size: 13, weight: .semibold))
+                            .foregroundStyle(versionAccent(i, theme))
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        Text(t.name).font(theme.uiFont(size: 12))
+                            .lineLimit(1).truncationMode(.tail)
+                            .foregroundStyle(theme.palette.textMuted)
+                        Spacer(minLength: 0)
+                        if ParallelColumnRules.canRemove(t.id, primary: state.translationId) {
+                            Button { state.setVersionEnabled(t.id, false) } label: {
+                                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(theme.palette.textMuted)
+                                    .frame(width: 20, height: 20).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Quitar \(t.id) de la vista paralela")
+                            .accessibilityLabel("Quitar la columna \(t.name)")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Columna \(t.name), \(languageName(t.language))")
+                    .accessibilityAddTraits(.isHeader)
                 }
-                .padding(.horizontal, 6).padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .columnSeparator(show: i > 0, theme: theme)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Columna \(t.name), \(languageName(t.language))")
-                .accessibilityAddTraits(.isHeader)
             }
         }
-        .padding(.horizontal, 24).padding(.vertical, 6)
+        .padding(.horizontal, 24).padding(.vertical, 8)
         .background(theme.palette.background)
         .overlay(alignment: .bottom) { Rectangle().fill(theme.palette.border).frame(height: 1) }
-    }
-}
-
-extension View {
-    /// Línea vertical fina en el borde izquierdo (centrada en el hueco entre columnas).
-    func columnSeparator(show: Bool, theme: Theme) -> some View {
-        overlay(alignment: .leading) {
-            if show { Rectangle().fill(theme.palette.border).frame(width: 1).offset(x: -ParallelMetrics.columnGap / 2 - 0.5) }
-        }
     }
 }
 
@@ -217,15 +250,36 @@ private struct ParallelRowView: View {
     var body: some View {
         let selected = state.selectedVerses.contains(row.number)
         let cols = state.parallelColumns
-        HStack(alignment: .top, spacing: ParallelMetrics.columnGap) {
-            ForEach(Array(row.cells.enumerated()), id: \.offset) { i, cell in
-                ParallelCellView(cell: cell, column: cols[safe: i], row: row.number, selected: selected)
-                    .columnSeparator(show: i > 0, theme: theme)
+        let ann = state.chapterAnnotations.forDisplayVerse(number: row.number)
+        let hl = state.chapterAnnotations.highlights[row.number]
+        let flashed = !selected && state.flashAlpha > 0 && state.flashVerses.contains(row.number)
+        let band = ParallelBand.fill(selected: selected, highlight: hl, flashAlpha: flashed ? state.flashAlpha : 0,
+                                     palette: theme.palette)
+        HStack(alignment: .verseBase, spacing: 0) {
+            HStack(spacing: 3) {
+                if ann.isBookmarked { Text("\u{2691}").font(.system(size: theme.pt * 0.6, weight: .bold)).foregroundStyle(theme.palette.bookmarkMarker) }
+                Text("\(row.number)")
+                    .font(.system(size: theme.pt * 0.68, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(theme.palette.verseNumber)
+            }
+            .frame(width: ParallelMetrics.gutter, alignment: .leading)
+            .alignmentGuide(.verseBase) { $0[.firstTextBaseline] }
+            .accessibilityHidden(true)
+            HStack(alignment: .verseBase, spacing: ParallelMetrics.columnGap) {
+                ForEach(Array(row.cells.enumerated()), id: \.offset) { i, cell in
+                    ParallelCellView(cell: cell, column: cols[safe: i], row: row.number, selected: selected)
+                }
             }
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.vertical, theme.verseGap + theme.pt * 0.25)
-        .overlay(alignment: .bottom) { Rectangle().fill(theme.palette.border.opacity(0.7)).frame(height: 1) }
+        .background {
+            if let band {
+                RoundedRectangle(cornerRadius: 4, style: .continuous).fill(band)
+                    .padding(.horizontal, -8).padding(.vertical, 2)
+            }
+        }
+        .overlay(alignment: .bottom) { Rectangle().fill(theme.palette.border).frame(height: 1) }
         .contentShape(Rectangle())
         .onTapGesture {
             let m = NSEvent.modifierFlags
@@ -235,7 +289,7 @@ private struct ParallelRowView: View {
     }
 }
 
-/// Celda de columna: texto sobre el fondo normal; la selección y el resaltado van solo sobre el texto.
+/// Celda de columna: solo texto (sin número ni fondo propio; la banda de la fila va detrás de todas las columnas).
 private struct ParallelCellView: View {
     @Environment(\.theme) private var theme
     @Environment(AppSettings.self) private var settings
@@ -247,8 +301,12 @@ private struct ParallelCellView: View {
 
     private var latin: Bool { (column?.language ?? "es") != "zh" }
     private var name: String { column?.name ?? column?.id ?? "" }
+    /// Búsqueda y Strong sí; resaltado/selección/destello los pinta la banda de la fila.
     private var highlight: TextHighlight {
-        column.map { state.highlight(for: $0.id) } ?? TextHighlight(terms: state.searchTerms, flash: state.flashVerses, flashAlpha: state.flashAlpha)
+        var h = column.map { state.highlight(for: $0.id) } ?? TextHighlight(terms: state.searchTerms)
+        h.flash = []; h.flashAlpha = 0
+        h.ann.highlights = [:]
+        return h
     }
 
     var body: some View {
@@ -263,29 +321,43 @@ private struct ParallelCellView: View {
                             .accessibilityAddTraits(.isHeader)
                     }
                 }
-                Text(VerseText.attributed(verses: [v], theme: theme, latin: latin, selected: selected ? [v.number] : [], links: false,
-                                           hl: highlight))
-                    .lineSpacing(theme.lineSpacing(latin: latin))
-                    .tracking(latin ? 0 : theme.pt * 0.02)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .environment(\.openURL, OpenURLAction { url in
-                        if let id = NoteLink.parse(url) { state.openNoteIcon(id: id); return .handled }
-                        guard url.scheme == StrongLink.scheme else { return .systemAction }
-                        state.openStrong(link: url); return .handled
-                    })
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(name). Versículo \(v.label). \(v.text)")
+                verseText(v)
+                    .alignmentGuide(.verseBase) { $0[.firstTextBaseline] }
             case .covered(let v):
                 Text("\u{2191} (\(v.label))")
                     .font(.system(size: theme.pt * 0.85)).foregroundStyle(theme.palette.textMuted)
+                    .alignmentGuide(.verseBase) { $0[.firstTextBaseline] }
                     .accessibilityLabel("\(name). Versículo \(row) incluido en el versículo \(v.label)")
             case .missing:
                 Text("\u{2014}")
                     .font(.system(size: theme.pt)).foregroundStyle(theme.palette.textMuted)
+                    .alignmentGuide(.verseBase) { $0[.firstTextBaseline] }
                     .accessibilityLabel("Versículo \(row) no existe en \(name)")
             }
         }
-        .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func verseText(_ v: DisplayVerse) -> some View {
+        let piece = Piece(verse: v.number, end: v.endNumber, label: nil, text: v.text)
+        let attr = VerseText.attributed(pieces: [piece], theme: theme, latin: latin, selected: [], links: false, hl: highlight)
+        let spacing = theme.lineSpacing(latin: latin), tracking = latin ? 0 : theme.pt * 0.02
+        let rounded = attr.hasRoundedBackgrounds
+        return Text(rounded ? attr.strippingRoundedBackgrounds() : attr)
+            .lineSpacing(spacing)
+            .tracking(tracking)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if rounded {
+                    RoundedBackdrop(attr: attr, bodyFont: theme.readingNSFont(latin: latin), lineSpacing: spacing, tracking: tracking)
+                }
+            }
+            .environment(\.openURL, OpenURLAction { url in
+                if let id = NoteLink.parse(url) { state.openNoteIcon(id: id); return .handled }
+                guard url.scheme == StrongLink.scheme else { return .systemAction }
+                state.openStrong(link: url); return .handled
+            })
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(name). Versículo \(v.label). \(v.text)")
     }
 }

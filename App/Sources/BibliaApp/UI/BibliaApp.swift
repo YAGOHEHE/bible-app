@@ -9,6 +9,7 @@ struct BibliaApp: App {
 
     init() {
         LegacyMigration.runAtLaunch()
+        FontRegistry.registerBundledFonts()   // Literata (OFL); si falla, el lector usa la serif del sistema
         let s = AppSettings()
         _settings = State(initialValue: s)
         let st = AppState(settings: s)

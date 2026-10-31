@@ -71,20 +71,18 @@ private struct ChapterScroll: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    Text("\(state.bookName(state.book)) \(state.chapter)")
-                        .font(theme.chapterTitleFont)
-                        .foregroundStyle(theme.palette.textPrimary)
-                        .accessibilityAddTraits(.isHeader)
-                        .padding(.bottom, theme.pt * 0.8)
+                    ChapterHeaderView(bookName: state.bookName(state.book), chapter: state.chapter)
+                        .padding(.top, 20).padding(.bottom, theme.pt * 0.9)
                         .id(-1)
                     ForEach(blocks) { b in
                         BlockView(block: b, prev: b.id > 0 ? blocks[b.id - 1] : nil,
                                   perVerse: settings.verseLayout == .perLine)
                             .id(b.id)
                     }
+                    ChapterEndNav()
                 }
                 .scrollTargetLayout()
-                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: Theme.readingColumnWidth, alignment: .leading)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 28)
                 .frame(maxWidth: .infinity)
@@ -163,8 +161,8 @@ struct BlockView: View {
         default: (size, weight, italic, center, color) = (0.92, .semibold, false, false, theme.palette.heading)
         }
         let top: CGFloat = (prev == nil) ? 0 : (k == "d" || k == "r" ? theme.pt * 0.15 : theme.pt * (k == "ms" ? 1.8 : 1.4))
-        var f = Font.system(size: theme.pt * size, weight: weight, design: .serif)
-        if italic { f = f.italic() }
+        let f = theme.serifFont(size: theme.pt * size, weight: weight == .bold || weight == .semibold ? .semibold : .regular,
+                                italic: italic)
         return Text(block.pieces.first?.text ?? "")
             .font(f)
             .foregroundStyle(color)
@@ -205,13 +203,23 @@ struct BlockView: View {
                                         selected: state.selectedVerses, hang: hang,
                                         hl: state.highlight(for: state.translationId))
         let single = block.verseNumbers.count == 1 ? block.verseNumbers.first : nil
-        Text(attr)
-            .lineSpacing(theme.lineSpacing(latin: latin))
-            .tracking(latin ? 0 : theme.pt * 0.02)
+        let spacing = theme.lineSpacing(latin: latin)
+        let tracking = latin ? 0 : theme.pt * 0.02
+        // Fondos (resaltado, selección, palabra Strong activa) con esquinas redondeadas: se dibujan detrás del texto.
+        let rounded = attr.hasRoundedBackgrounds
+        Text(rounded ? attr.strippingRoundedBackgrounds() : attr)
+            .lineSpacing(spacing)
+            .tracking(tracking)
             .tint(theme.palette.verseNumber)
             // Sin .textSelection: en macOS convierte el clic en selección de letras y los enlaces
             // verse:// (clic → seleccionar versículo + barra de acciones) dejan de recibirse.
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if rounded {
+                    RoundedBackdrop(attr: attr, bodyFont: theme.readingNSFont(latin: latin),
+                                    lineSpacing: spacing, tracking: tracking)
+                }
+            }
             .padding(.leading, indent)
             .contentShape(Rectangle())
             .environment(\.openURL, OpenURLAction { url in
@@ -260,9 +268,14 @@ struct TextHighlight: Equatable {
             guard let lo = chars.index(chars.startIndex, offsetBy: a, limitedBy: chars.endIndex),
                   let hi = chars.index(chars.startIndex, offsetBy: b, limitedBy: chars.endIndex), lo < hi else { continue }
             let active = strongActive == StrongSelection(strong: sp.strong, verse: verse, start: sp.start)
-            body[lo..<hi].underlineStyle = Text.LineStyle(pattern: active ? .solid : .dot, color: theme.palette.strongUnderline)
-            body[lo..<hi].foregroundColor = theme.palette.textPrimary
-            if active { body[lo..<hi].backgroundColor = theme.palette.selection }
+            // Palabra con número: subrayado punteado fino (sin negrita ni color). Activa: fondo accent + texto onAccent.
+            if active {
+                body[lo..<hi].foregroundColor = theme.palette.onAccent
+                body[lo..<hi].backgroundColor = theme.palette.accent
+                body[lo..<hi][RoundedBGKey.self] = RoundedBG(color: theme.palette.accent, radius: 3)
+            } else {
+                body[lo..<hi].underlineStyle = Text.LineStyle(pattern: .dot, color: theme.palette.strongUnderline)
+            }
             if let u = StrongLink.url(sp, verse: verse) { body[lo..<hi].link = u }
         }
     }
@@ -275,7 +288,8 @@ struct TextHighlight: Equatable {
                let hi = AttributedString.Index(r.upperBound, within: body) {
                 body[lo..<hi].backgroundColor = theme.palette.searchHighlight
                 body[lo..<hi].foregroundColor = theme.palette.textPrimary
-                body[lo..<hi].font = theme.readingFont(latin: latin).bold()
+                body[lo..<hi].font = theme.readingFont(latin: latin, weight: .semibold)
+                body[lo..<hi][MirrorFontKey.self] = theme.readingNSFont(latin: latin, weight: .semibold)
                 body[lo..<hi].underlineStyle = .single
             }
         }
@@ -283,20 +297,39 @@ struct TextHighlight: Equatable {
 }
 
 enum VerseText {
-    private static func numberRun(_ label: String, verse: Int, theme: Theme, selected: Bool, links: Bool) -> AttributedString {
-        var num = AttributedString(label + "\u{2009}")
+    private static func numberRun(_ label: String, verse: Int, theme: Theme, selected: Bool, links: Bool,
+                                  band: RoundedBG? = nil) -> AttributedString {
+        var num = AttributedString(label + "\u{2009}\u{2060}")   // U+2060: el número no se queda solo al final de línea
         num.font = theme.verseNumberFont
+        num[MirrorFontKey.self] = theme.verseNumberNSFont
         num.baselineOffset = theme.verseNumberBaseline
         num.foregroundColor = theme.palette.verseNumber
         if links { num.link = URL(string: "verse://\(verse)") }
         if selected { num.backgroundColor = theme.palette.selection }
+        if let band { num[RoundedBGKey.self] = band }
         return num
+    }
+
+    /// Fondo redondeado del cuerpo (4 pt si está seleccionado, 3 pt si es un resaltado).
+    private static func band(_ c: HighlightColor?, selected: Bool, flash: Double, theme: Theme) -> RoundedBG? {
+        if let bg = bodyBackground(c, selected: selected, theme: theme) {
+            return RoundedBG(color: bg, radius: selected ? 4 : 3)
+        }
+        if flash > 0 { return RoundedBG(color: theme.palette.selection.opacity(flash), radius: 4) }
+        return nil
+    }
+
+    /// Fuente del cuerpo + su copia AppKit para medir.
+    private static func setBodyFont(_ body: inout AttributedString, theme: Theme, latin: Bool) {
+        body.font = theme.readingFont(latin: latin)
+        body[MirrorFontKey.self] = theme.readingNSFont(latin: latin)
     }
 
     /// Marcador: pequeño glifo antes del número del versículo.
     static func bookmarkGlyph(theme: Theme) -> AttributedString {
         var g = AttributedString("\u{2691}\u{2009}")
         g.font = .system(size: theme.pt * 0.8, weight: .bold)
+        g[MirrorFontKey.self] = NSFont.systemFont(ofSize: theme.pt * 0.8, weight: .bold)
         g.baselineOffset = theme.verseNumberBaseline
         g.foregroundColor = theme.palette.bookmarkMarker
         return g
@@ -306,6 +339,7 @@ enum VerseText {
     static func noteGlyph(_ n: Note, theme: Theme) -> AttributedString {
         var g = AttributedString("\u{2009}\u{270E}")
         g.font = .system(size: theme.pt * 0.78, weight: .semibold)
+        g[MirrorFontKey.self] = NSFont.systemFont(ofSize: theme.pt * 0.78, weight: .semibold)
         g.foregroundColor = theme.palette.accent
         g.link = URL(string: "\(NoteLink.scheme)://\(n.id)")
         return g
@@ -325,14 +359,16 @@ enum VerseText {
             let isSel = selected.contains(v.number)
             let va = hl.annotations(v.number, v.endNumber)
             var body = AttributedString(v.text)
-            body.font = theme.readingFont(latin: latin)
+            setBodyFont(&body, theme: theme, latin: latin)
             body.foregroundColor = theme.palette.textPrimary
             if let bg = bodyBackground(va?.color, selected: isSel, theme: theme) { body.backgroundColor = bg }
             if !isSel, hl.flashes(v.number, v.endNumber) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
+            let bnd = band(va?.color, selected: isSel, flash: !isSel && hl.flashes(v.number, v.endNumber) ? hl.flashAlpha : 0, theme: theme)
+            if let bnd { body[RoundedBGKey.self] = bnd }
             hl.apply(to: &body, plain: v.text, theme: theme, latin: latin)
             hl.applyStrong(to: &body, verse: v.number, offset: 0, count: v.text.count, theme: theme)
             if va?.isBookmarked == true { out += bookmarkGlyph(theme: theme) }
-            out += numberRun(v.label, verse: v.number, theme: theme, selected: isSel, links: links)
+            out += numberRun(v.label, verse: v.number, theme: theme, selected: isSel, links: links, band: bnd)
             out += body
             for n in va?.notes ?? [] where n.verseStart >= v.number && n.verseStart <= v.endNumber {
                 out += noteGlyph(n, theme: theme)
@@ -350,12 +386,14 @@ enum VerseText {
             let isSel = selected.contains(p.verse)
             let va = hl.annotations(p.verse, p.end)
             if p.label != nil, va?.isBookmarked == true { out += bookmarkGlyph(theme: theme) }
-            if let l = p.label { out += numberRun(l, verse: p.verse, theme: theme, selected: isSel, links: links) }
+            let bnd = band(va?.color, selected: isSel, flash: !isSel && hl.flashes(p.verse, p.end) ? hl.flashAlpha : 0, theme: theme)
+            if let l = p.label { out += numberRun(l, verse: p.verse, theme: theme, selected: isSel, links: links, band: bnd) }
             var body = AttributedString(p.text)
-            body.font = theme.readingFont(latin: latin)
+            setBodyFont(&body, theme: theme, latin: latin)
             body.foregroundColor = theme.palette.textPrimary
             if let bg = bodyBackground(va?.color, selected: isSel, theme: theme) { body.backgroundColor = bg }
             if !isSel, hl.flashes(p.verse, p.end) { body.backgroundColor = theme.palette.selection.opacity(hl.flashAlpha) }
+            if let bnd { body[RoundedBGKey.self] = bnd }
             hl.apply(to: &body, plain: p.text, theme: theme, latin: latin)
             hl.applyStrong(to: &body, verse: p.verse, offset: p.textOffset, count: p.text.count, theme: theme)
             if links, body.link == nil { body.link = URL(string: "verse://\(p.verse)") }
@@ -366,7 +404,12 @@ enum VerseText {
                     out += noteGlyph(n, theme: theme)
                 }
             }
-            if i < pieces.count - 1 { out += AttributedString(latin ? " " : "") }
+            if i < pieces.count - 1 {
+                var sep = AttributedString(latin ? " " : "")
+                // El espacio entre dos trozos del mismo versículo lleva el mismo fondo (banda continua).
+                if let bnd, pieces[i + 1].verse == p.verse { sep[RoundedBGKey.self] = bnd }
+                out += sep
+            }
         }
         if hang > 0 {
             let ps = NSMutableParagraphStyle()
@@ -375,5 +418,71 @@ enum VerseText {
             out[AttributeScopes.AppKitAttributes.ParagraphStyleAttribute.self] = ps
         }
         return out
+    }
+}
+
+/// Cabecera de capítulo: nombre del libro en mayúsculas pequeñas y, debajo, el número grande en acento.
+struct ChapterHeaderView: View {
+    @Environment(\.theme) private var theme
+    let bookName: String
+    let chapter: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(bookName.uppercased())
+                .font(theme.chapterBookFont)
+                .tracking(Theme.chapterBookTracking)
+                .foregroundStyle(theme.palette.textMuted)
+            Text("\(chapter)")
+                .font(theme.chapterNumberFont)
+                .foregroundStyle(theme.palette.accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(bookName) \(chapter)")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Navegación discreta al final del capítulo: «← Juan 2» y «Juan 4 →» (nombres en el idioma de la versión).
+private struct ChapterEndNav: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.theme) private var theme
+
+    private func label(_ p: ChapterPosition) -> String { "\(state.bookName(p.book)) \(p.chapter)" }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(theme.palette.border).frame(height: 1)
+            HStack(alignment: .firstTextBaseline) {
+                if let p = state.prevPosition {
+                    Button { state.goPrev() } label: { Text("\u{2190} \(label(p))") }
+                        .help("Capítulo anterior (\u{2190})")
+                        .accessibilityLabel("Capítulo anterior: \(label(p))")
+                }
+                Spacer(minLength: 12)
+                if let p = state.nextPosition {
+                    Button { state.goNext() } label: { Text("\(label(p)) \u{2192}") }
+                        .help("Capítulo siguiente (\u{2192})")
+                        .accessibilityLabel("Capítulo siguiente: \(label(p))")
+                }
+            }
+            .buttonStyle(ChapterNavButtonStyle())
+            .padding(.top, 14)
+        }
+        .padding(.top, theme.pt * 2)
+        .padding(.bottom, 24)
+    }
+}
+
+private struct ChapterNavButtonStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(configuration.isPressed ? theme.palette.accent : theme.palette.textSecondary)
+            .contentShape(Rectangle())
     }
 }

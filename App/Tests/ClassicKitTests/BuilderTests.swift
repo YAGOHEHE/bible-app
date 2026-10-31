@@ -26,7 +26,7 @@ import Foundation
 
     @Test func titleAndHeadingsPresent() {
         let s = Self.build().text.string
-        #expect(s.hasPrefix("Juan 3\n"))
+        #expect(s.hasPrefix("JUAN\n3\n"))      // Códice: libro en mayúsculas + número grande
         #expect(s.contains("Primer título\n"))
         #expect(s.contains("Salmo de David\n"))
         #expect(!Self.build(headings: false).text.string.contains("Primer título"))
@@ -82,8 +82,8 @@ import Foundation
     @Test func perVerseModeOneParagraphEach() {
         let b = Self.build(mode: .perVerse, style: ReaderStyle(palette: .light, fontScale: 1, latin: true, perVerse: true))
         let lines = b.text.string.split(separator: "\n").map(String.init)
-        // título + 2 títulos + 3 versículos
-        #expect(lines.count == 6)
+        // libro + número de capítulo + 2 títulos + 3 versículos
+        #expect(lines.count == 7)
         #expect(lines.contains { $0.contains("Gamma merged") && $0.hasPrefix("3–4") })
     }
 
@@ -121,10 +121,43 @@ import Foundation
         let big = ReaderStyle(palette: .dark, fontScale: 2.0, latin: false, perVerse: false)
         let b = Self.build(style: big)
         let f = b.text.attribute(.font, at: (b.text.string as NSString).range(of: "Alpha").location, effectiveRange: nil) as? NSFont
-        #expect(f!.pointSize == 34)
+        #expect(f!.pointSize == 38)      // 19 pt base × 2,0
         let c = b.text.attribute(.foregroundColor, at: (b.text.string as NSString).range(of: "Alpha").location, effectiveRange: nil) as? NSColor
         #expect(c == ReaderPalette.dark.textPrimary)
         #expect(big.lineSpacing > ReaderStyle(palette: .dark, fontScale: 2.0, latin: true, perVerse: false).lineSpacing)
+    }
+
+    @Test func codiceHeaderAndVerseNumberStyle() {
+        let b = Self.build()
+        let t = b.text
+        let book = t.attributes(at: 0, effectiveRange: nil)
+        #expect((book[.font] as? NSFont)?.pointSize == 12)
+        #expect(book[.foregroundColor] as? NSColor == Self.style.palette.textMuted)
+        #expect(abs((book[.kern] as? CGFloat ?? 0) - 12 * 0.16) < 0.001)
+        let num = t.attributes(at: ("JUAN\n" as NSString).length, effectiveRange: nil)
+        #expect(abs((num[.font] as? NSFont)!.pointSize - 3.8 * Self.style.pt) < 0.01)
+        #expect(num[.foregroundColor] as? NSColor == Self.style.palette.accent)
+        let vn = (b.text.string as NSString).range(of: "Alpha").location
+        var found = false
+        t.enumerateAttribute(.bibliaVerseNumber, in: NSRange(location: 0, length: min(vn, t.length)), options: []) { v, r, stop in
+            guard v != nil else { return }
+            let a = t.attributes(at: r.location, effectiveRange: nil)
+            #expect(abs((a[.font] as? NSFont)!.pointSize - 0.58 * Self.style.pt) < 0.01)
+            #expect(abs((a[.baselineOffset] as? CGFloat ?? 0) - 0.40 * Self.style.pt) < 0.01)
+            #expect(a[.foregroundColor] as? NSColor == Self.style.palette.verseNumber)
+            found = true; stop.pointee = true
+        }
+        #expect(found)
+        #expect(ReaderStyle.baseSize == 19 && ReaderFonts.columnWidth == 640)
+    }
+
+    @Test func codicePaletteMatchesTokens() {
+        #expect(ReaderPalette.light.background == ReaderPalette.hex(0xFBFAF7))
+        #expect(ReaderPalette.dark.accent == ReaderPalette.hex(0xEE8B76))
+        #expect(ReaderPalette.sepia.onAccent == ReaderPalette.hex(0xFFF8EC))
+        #expect(ReaderPalette.light.highlight(.orange) == ReaderPalette.hex(0xF1DCC6))
+        #expect(ReaderPalette.dark.versionColor(1) == ReaderPalette.hex(0x8FB8E0))
+        #expect(ReaderPalette.sepia.strongUnderline == ReaderPalette.hex(0xB9A47C))
     }
 
     @Test func paletteAndFontScale() {
