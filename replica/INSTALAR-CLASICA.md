@@ -14,7 +14,7 @@ Las dos apps tienen las mismas funciones de la versión 1.2 (lectura, ocho versi
 Menú  (manzana, arriba a la izquierda) -> **Acerca de este Mac**. Verás «macOS High Sierra 10.13», «Mojave 10.14», «Catalina 10.15», «Big Sur 11», «Sonoma 14», etc.
 
 ## Instalación
-1. Descarga `Biblia-Clasica-1.2.0.dmg` y haz doble clic para abrirlo.
+1. Descarga `Biblia-Clasica-1.2.1.dmg` y haz doble clic para abrirlo.
 2. Arrastra **Biblia Clásica** a la carpeta **Aplicaciones**.
 3. **Primera apertura (solo una vez)**: en Aplicaciones, haz **clic derecho (o Control + clic) sobre Biblia Clásica -> Abrir**, y en el aviso pulsa **Abrir**.
 4. Si el aviso no ofrece «Abrir»:
@@ -62,7 +62,7 @@ Arrastra **Biblia Clásica** de Aplicaciones a la Papelera. Para borrar también
 - 两个应用功能相同（1.2 全部功能，同样的「Códice」新设计），可同时安装，**数据各自独立**。
 
 ### 安装
-1. 打开 `Biblia-Clasica-1.2.0.dmg`，把 **Biblia Clásica** 拖到「应用程序」。
+1. 打开 `Biblia-Clasica-1.2.1.dmg`，把 **Biblia Clásica** 拖到「应用程序」。
 2. 第一次打开：在「应用程序」里**右键（或 Control+点击）Biblia Clásica -> 打开 -> 打开**。
 3. 若没有"打开"按钮：
    - **macOS 10.13 / 10.14 / 10.15**：先正常双击打开一次（会被拦截），然后进入 **系统偏好设置 -> 安全性与隐私 -> 通用**，点击 **「仍然打开」**（西班牙语界面显示 **Abrir de todos modos**）。

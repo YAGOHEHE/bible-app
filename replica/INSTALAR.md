@@ -3,7 +3,7 @@
 Biblia es gratuita y solo funciona en **macOS 14 (Sonoma) o superior**. No está en la App Store ni está notarizada por Apple, por eso la primera apertura requiere un paso extra.
 
 ## Instalación
-1. Descarga `Biblia-1.2.0.dmg` y haz doble clic para abrirlo.
+1. Descarga `Biblia-1.2.1.dmg` y haz doble clic para abrirlo.
 2. Arrastra **Biblia** a la carpeta **Aplicaciones**.
 3. Primera apertura (solo una vez): abre Aplicaciones, haz **clic derecho (o Control + clic) sobre Biblia -> Abrir**, y en el aviso pulsa **Abrir**.
 4. Si el aviso no ofrece "Abrir": intenta abrir la app normalmente, ve a **Ajustes del Sistema -> Privacidad y seguridad**, baja hasta el mensaje sobre "Biblia" y pulsa **Abrir igualmente** (te pedirá la contraseña).
